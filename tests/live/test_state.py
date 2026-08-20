@@ -38,11 +38,13 @@ class TestDriverSamples:
 
     def test_clamps_outside_the_sample_range(self):
         samples = DriverSamples()
-        samples.add_position(1.0, 5.0, 6.0, True)
-        samples.add_position(2.0, 7.0, 8.0, True)
+        # The two samples must be far enough apart to count as real movement;
+        # a repeated coordinate is deliberately not stored.
+        samples.add_position(1.0, 500.0, 600.0, True)
+        samples.add_position(2.0, 700.0, 800.0, True)
 
-        assert samples.position_at(0.0)[:2] == (5.0, 6.0)
-        assert samples.position_at(9.0)[:2] == (7.0, 8.0)
+        assert samples.position_at(0.0)[:2] == (500.0, 600.0)
+        assert samples.position_at(9.0)[:2] == (700.0, 800.0)
 
     def test_returns_none_without_any_sample(self):
         assert DriverSamples().position_at(1.0) is None

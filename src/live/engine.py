@@ -56,6 +56,9 @@ class LiveRaceEngine:
         on_first_frame: Optional callback fired once the first frame exists,
             used to open the replay window only when there is something to
             draw.
+        track_line: Circuit centreline used to reconstruct positions when the
+            feed stalls. Optional; without it gaps are crossed in a straight
+            line.
     """
 
     def __init__(
@@ -64,10 +67,14 @@ class LiveRaceEngine:
         projector: TrackProjector,
         config: Optional[LiveConfig] = None,
         on_first_frame: Optional[Callable[[], None]] = None,
+        track_line=None,
     ):
         self.session_ref = session_ref
         self.config = config or LiveConfig()
         self.state = LiveSessionState()
+        # Lets the frame builder walk a car along the circuit when the
+        # position feed stalls instead of dragging it across the infield.
+        self.state.track_line = track_line
         self.projector = projector
         self.frames = LiveFrameBuffer(max_frames=self.config.max_frames)
         self.builder = LiveFrameBuilder(self.state, projector)

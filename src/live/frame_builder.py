@@ -87,7 +87,7 @@ class LiveFrameBuilder:
         samples = self.state.samples.get(number)
         if samples is None:
             return None
-        position = samples.position_at(t)
+        position = samples.position_at(t, self.state.track_line)
         if position is None:
             return None
 

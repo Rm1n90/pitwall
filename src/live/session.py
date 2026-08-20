@@ -18,6 +18,7 @@ from src.live.schedule import (
     find_session_by_path,
     resolve_live_session,
 )
+from src.lib.track_geometry import TrackLine
 from src.live.track_reference import get_track_reference
 
 # How long to wait for the first frame before opening the window anyway. The
@@ -94,13 +95,24 @@ def build_projector(session_ref: LiveSessionRef,
         reference.length_m,
     )
     projector.reference = reference
+    try:
+        projector.track_line = TrackLine(
+            reference.example_lap["X"].to_numpy(float),
+            reference.example_lap["Y"].to_numpy(float),
+        )
+    except Exception as exc:
+        print(f"[live] no track line available for position repair: {exc}")
+        projector.track_line = None
     return projector
 
 
 def start_engine(session_ref: LiveSessionRef, projector: TrackProjector,
                  config: LiveConfig) -> LiveRaceEngine:
     """Start the engine and wait briefly for its first frame."""
-    engine = LiveRaceEngine(session_ref, projector, config)
+    engine = LiveRaceEngine(
+        session_ref, projector, config,
+        track_line=getattr(projector, "track_line", None),
+    )
     engine.start()
 
     deadline = time.monotonic() + FIRST_FRAME_TIMEOUT_S

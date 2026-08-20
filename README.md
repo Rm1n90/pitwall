@@ -343,6 +343,10 @@ Thanks to @el-mandaloriano for showing how to resolve this issue: #12
   rare — the 2026 Belgian, 2025 Hungarian and 2024 Italian races all show 0.0%
   frozen frames, and the repair is a no-op on them.
 
+  Live mode gets the same treatment plus dead reckoning, since a live feed can
+  fall behind entirely: in the worst part of that race it went from 79% frozen
+  frames to 5.7%. See [docs/LiveMode.md](./docs/LiveMode.md#when-the-position-feed-falls-behind).
+
 ## 📝 License
 
 MIT — see [LICENSE](./LICENSE).

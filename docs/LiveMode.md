@@ -182,9 +182,44 @@ The live feeds are noisy, and the app cleans them up:
 - **Pedal dropouts.** The feed publishes `104` for throttle and brake when a
   car's pedal data is not being transmitted. Those are treated as "no data" and
   the last known value is carried forward instead of flickering to zero.
+- **Stalled position updates.** When the feed loses a car it repeats the last
+  coordinate it had. Those repeats are not recorded, so a stall stays visible
+  as a gap rather than masquerading as a healthy stream of samples.
 
-Cars can still make a visible jump occasionally, usually around the pit lane.
-That is the feed, not the app — the official timing map does the same.
+### When the position feed falls behind
+
+A healthy feed locates every car about four times a second. Occasionally a
+session's feed degrades badly and only locates a car every two or three
+seconds. Left alone that makes cars freeze on track and then jump.
+
+Two things stay trustworthy when the position feed does not: the **speed**
+channel, which is carried separately and says how far the car has gone, and
+the **shape of the circuit**, which says where it can have gone. So:
+
+- Between two known positions that are far apart in time, the car is walked
+  along the circuit at the speed it was doing, rather than being dragged in a
+  straight line across the infield.
+- When the feed has not located a car at all for longer than the render delay,
+  it is carried forward along the circuit for up to five seconds — enough to
+  cover a stalled feed without inventing a whole lap.
+
+Measured on the 2026 Hungarian Grand Prix, whose feed is unusually poor,
+during the worst part of the race:
+
+| | Frozen | Teleporting |
+|---|---|---|
+| Before | 79.0% | 14.8% |
+| After | **5.7%** | **1.7%** |
+
+Carrying a car forward is a prediction, not a measurement. Predicting two to
+three seconds ahead lands a median of about 60 metres from where the car turns
+out to be — better than freezing, which by then is out by the full distance
+travelled, but not exact. A car whose speed reads zero is never carried
+forward, so a stopped car stays stopped.
+
+On a healthy feed none of this engages, and cars still make the occasional
+visible jump around the pit lane. That is the feed, not the app — the official
+timing map does the same.
 
 ## Known limitations
 

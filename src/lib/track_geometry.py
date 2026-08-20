@@ -41,12 +41,18 @@ MIN_MOVING_KMH = 30.0
 # rather than as the car moving.
 ANCHOR_MIN_MOVE = 5.0
 
-# How far the distance implied by speed may disagree with the distance along
-# the track before the reconstruction is abandoned for that gap. A factor of
-# two is deliberately loose: it still rejects anchors that are obviously
-# untrustworthy while accepting the ordinary disagreement between a
-# speed-integrated distance and a reference racing line. Tightening it repairs
-# far less; removing it entirely trades frozen cars for teleporting ones.
+# How far the distance along the track may disagree with the distance implied
+# by speed before the reconstruction is abandoned for that gap.
+#
+# The check is deliberately asymmetric in effect. It cannot reject a
+# reconstruction that is *shorter* than the speed suggests, and that is fine:
+# following a short arc lands within metres of the straight line anyway. What
+# it does reject is a reconstruction that is *longer* - a mis-projected anchor
+# that would fling a car round the circuit. That is the direction that makes
+# cars teleport, and it is caught.
+#
+# Tightening this repairs far less; removing it entirely takes the teleport
+# rate from 8% to 22%.
 DISTANCE_TOLERANCE = 1.0
 
 

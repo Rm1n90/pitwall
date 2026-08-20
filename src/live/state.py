@@ -53,6 +53,26 @@ MIN_SAMPLE_INTERVAL_S = 0.05
 # Beyond this gap a large jump is expected rather than suspicious.
 PLAUSIBILITY_MAX_GAP_S = 3.0
 
+# Gaps longer than this are reconstructed along the track rather than being
+# crossed in a straight line. A healthy feed updates about four times a
+# second, so this leaves it untouched.
+REPAIR_GAP_S = 0.6
+
+# A car must be moving for a gap to be worth reconstructing; one genuinely
+# stopped in the pits or a gravel trap has to stay where it is.
+REPAIR_MIN_KMH = 30.0
+
+# A repeated coordinate carries no new information. Storing it would make the
+# samples either side of a stall look 0.24 s apart when the car has really not
+# been located for seconds, which hides the gap from the repair above.
+MIN_POSITION_MOVE = 5.0
+
+# When the feed has not located a car for longer than the render delay there
+# is no later sample to interpolate towards, and the car would simply stop.
+# For up to this long it is carried forward along the circuit at the speed the
+# telemetry says it is doing. Beyond it the prediction is not worth trusting.
+MAX_DEAD_RECKONING_S = 5.0
+
 
 def _is_reachable(first, second) -> bool:
     """True when a car could plausibly travel between two samples."""
@@ -99,6 +119,15 @@ class DriverSamples:
         if self.times and t - self.times[-1] < MIN_SAMPLE_INTERVAL_S:
             return
 
+        # A feed that has lost a car repeats its last coordinate. Recording
+        # those would disguise a multi-second stall as a healthy stream of
+        # samples, so only genuine movement is stored.
+        if self.times:
+            moved = ((x - self.xs[-1]) ** 2 + (y - self.ys[-1]) ** 2) ** 0.5
+            if moved < MIN_POSITION_MOVE:
+                self.on_track[-1] = on_track
+                return
+
         if not self._is_plausible(t, x, y):
             self.rejected_count += 1
             # A distant reading is only believed once consecutive readings
@@ -137,8 +166,15 @@ class DriverSamples:
         self.car_times.append(t)
         self.car_values.append(values)
 
-    def position_at(self, t: float) -> Optional[Tuple[float, float, bool]]:
-        """Linearly interpolate the car's position at time ``t``.
+    def position_at(self, t: float, track_line=None
+                    ) -> Optional[Tuple[float, float, bool]]:
+        """Interpolate the car's position at time ``t``.
+
+        Normally this is a straight line between the two samples either side
+        of ``t``. When the position feed stalls those samples can be seconds
+        apart, and a straight line then cuts across the circuit while the car
+        appears to crawl. Given a ``track_line`` the car is walked along the
+        circuit instead. See :mod:`src.lib.track_geometry`.
 
         Returns ``None`` when there is no sample at or before ``t``.
         """
@@ -148,6 +184,10 @@ class DriverSamples:
         if t <= times[0]:
             return self.xs[0], self.ys[0], self.on_track[0]
         if t >= times[-1]:
+            if track_line is not None:
+                ahead = self._dead_reckon(track_line, t)
+                if ahead is not None:
+                    return ahead[0], ahead[1], self.on_track[-1]
             return self.xs[-1], self.ys[-1], self.on_track[-1]
 
         index = bisect.bisect_right(times, t)
@@ -156,9 +196,95 @@ class DriverSamples:
         if span <= 0:
             return self.xs[index], self.ys[index], self.on_track[index]
         ratio = (t - t0) / span
+
+        if track_line is not None and span > REPAIR_GAP_S:
+            followed = self._follow_track(track_line, index, ratio, span, t)
+            if followed is not None:
+                return followed[0], followed[1], self.on_track[index - 1]
+
         x = self.xs[index - 1] + (self.xs[index] - self.xs[index - 1]) * ratio
         y = self.ys[index - 1] + (self.ys[index] - self.ys[index - 1]) * ratio
         return x, y, self.on_track[index - 1]
+
+    def _distance_travelled(self, start_t: float, end_t: float) -> float:
+        """Integrate the speed channel between two times, in feed units.
+
+        Returns 0.0 when there is no usable telemetry, which stops the caller
+        from moving a car it knows nothing about.
+        """
+        if end_t <= start_t or not self.car_times:
+            return 0.0
+
+        times = [start_t]
+        speeds = [float((self.car_at(start_t) or {}).get("speed", 0.0))]
+        first = bisect.bisect_right(self.car_times, start_t)
+        for index in range(first, len(self.car_times)):
+            sample_t = self.car_times[index]
+            if sample_t >= end_t:
+                break
+            times.append(sample_t)
+            speeds.append(float(self.car_values[index].get("speed", 0.0)))
+        times.append(end_t)
+        speeds.append(float((self.car_at(end_t) or {}).get("speed", 0.0)))
+
+        total = 0.0
+        for i in range(len(times) - 1):
+            step = times[i + 1] - times[i]
+            average = 0.5 * (speeds[i] + speeds[i + 1])
+            total += average / 3.6 * 10.0 * step
+        return total
+
+    def _dead_reckon(self, line, t: float):
+        """Carry a car forward along the circuit past its last known position.
+
+        Returns ``None`` when the car should simply stay where it is.
+        """
+        elapsed = t - self.times[-1]
+        if elapsed <= 0 or elapsed > MAX_DEAD_RECKONING_S:
+            return None
+        # The speed channel is separate from the position feed and usually
+        # still healthy, so a car that has actually stopped stops here too.
+        if float((self.car_at(t) or {}).get("speed", 0.0)) < REPAIR_MIN_KMH:
+            return None
+
+        distance = self._distance_travelled(self.times[-1], t)
+        if distance <= 0:
+            return None
+
+        arc, offset_x, offset_y = line.project(self.xs[-1], self.ys[-1])
+        point_x, point_y = line.point_at(arc + distance)
+        return point_x + offset_x, point_y + offset_y
+
+    def _follow_track(self, line, index: int, ratio: float, span: float,
+                      t: float):
+        """Return a position along the circuit between two distant samples.
+
+        Returns ``None`` when the reconstruction cannot be trusted, in which
+        case the caller falls back to straight-line interpolation.
+        """
+        from src.lib.track_geometry import DISTANCE_TOLERANCE
+
+        speed = float((self.car_at(t) or {}).get("speed", 0.0))
+        if speed < REPAIR_MIN_KMH:
+            return None
+
+        start_arc, start_dx, start_dy = line.project(
+            self.xs[index - 1], self.ys[index - 1])
+        end_arc, end_dx, end_dy = line.project(self.xs[index], self.ys[index])
+        along = line.forward_distance(start_arc, end_arc)
+
+        # Cross-check against how far the car's own speed says it went,
+        # adding whole laps when it covered more than one.
+        implied = speed / 3.6 * 10.0 * span
+        if implied > 0 and line.length > 0:
+            laps = round((implied - along) / line.length)
+            along += max(0, laps) * line.length
+            if abs(implied - along) > DISTANCE_TOLERANCE * max(implied, 1.0):
+                return None
+
+        point_x, point_y = line.point_at(start_arc + ratio * along)
+        return (point_x + start_dx + (end_dx - start_dx) * ratio,
+                point_y + start_dy + (end_dy - start_dy) * ratio)
 
     def car_at(self, t: float) -> Optional[dict]:
         """Return the most recent telemetry sample at or before ``t``."""
@@ -189,6 +315,8 @@ class LiveSessionState:
     def __init__(self):
         self._lock = threading.RLock()
 
+        #: Circuit centreline, used to reconstruct a stalled position feed.
+        self.track_line = None
         self.session_info: dict = {}
         self.session_status: str = ""
         self.drivers: Dict[str, dict] = {}
