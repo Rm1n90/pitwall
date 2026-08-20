@@ -799,6 +799,9 @@ class ControlsPopupComponent(BaseComponent):
             ("D", "Toggle DRS Zones"),
             ("B", "Toggle Progress Bar"),
             ("L", "Toggle Driver Labels"),
+            ("V", "2D / 3D circuit"),
+            ("C", "Camera: orbit / chase / tracking"),
+            ("Drag, wheel", "Turn and zoom the 3D view"),
             ("H", "Toggle Help Popup"),
         ]
 
