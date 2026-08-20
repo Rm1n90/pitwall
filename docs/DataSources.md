@@ -74,8 +74,11 @@ the underlying feed directly, so this mainly matters as a fallback.
 
 - **Real safety car GPS.** F1 does not transmit it. Ours is simulated ahead of
   the leader.
-- **Pit lane geometry.** No feed describes it, but it can be derived: cars are
-  flagged `InPit`, so their coordinates trace the pit lane. One race is enough
-  to extract and cache the path.
+- **Pit lane geometry.** No feed describes it, but it is now derived: cars are
+  flagged `InPit`, so their coordinates during a stop trace the pit lane. Every
+  stop gives an independent trace and the middle one is kept. At the 2025
+  Hungarian Grand Prix, 29 traces agreed within 360-394 m. A session whose
+  position feed has degraded produces traces of zero length and is rejected in
+  favour of an earlier year at the same circuit. See `src/lib/pit_lane.py`.
 - **Tyre temperatures, fuel load, ERS deployment.** Teams have these; the
   public feed does not.

@@ -143,6 +143,23 @@ def main(year=None, round_number=None, playback_speed=1, session_type='R', visib
     # Get circuit rotation
 
     circuit_rotation = get_circuit_rotation(session)
+
+    # Corner numbers and the pit lane, for drawing the circuit
+    circuit_info = None
+    try:
+        circuit_info = session.get_circuit_info()
+    except Exception as e:
+        print(f"Corner markers unavailable: {e}")
+
+    pit_lane = None
+    try:
+        from src.lib.pit_lane import get_pit_lane
+        pit_lane = get_pit_lane(
+            session, year, session.event.get('EventName'),
+            event_key=f"{session.event.get('EventName')}_{year}",
+        )
+    except Exception as e:
+        print(f"Pit lane unavailable: {e}")
     
     # Prepare session info for display banner
     session_info = {
@@ -177,7 +194,9 @@ def main(year=None, round_number=None, playback_speed=1, session_type='R', visib
       session_info=session_info,
       session=session,
       enable_telemetry=True,
-      race_control_messages=race_telemetry.get('race_control_messages', [])
+      race_control_messages=race_telemetry.get('race_control_messages', []),
+      circuit_info=circuit_info,
+      pit_lane=pit_lane
     )
 
 if __name__ == "__main__":

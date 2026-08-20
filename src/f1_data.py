@@ -37,6 +37,10 @@ def enable_cache():
 FPS = 25
 DT = 1 / FPS
 
+# Fallback length of a pit visit when the rejoin is missing from the data,
+# for example when a driver retires in the pits.
+DEFAULT_PIT_TRANSIT_S = 25.0
+
 
 def _process_single_driver(args):
     """Process telemetry data for a single driver - must be top-level for multiprocessing"""
@@ -875,26 +879,40 @@ def get_race_telemetry(session, session_type="R"):
             print(f"Weather data could not be processed: {e}")
 
     #4.2. Aggregating Driver pit-in and pit-out data for Pitstop leaderboard indicator
+    # A pit visit spans two lap rows: the driver enters at the end of one lap
+    # and rejoins at the start of the next, so PitInTime and PitOutTime are
+    # never on the same row. Pairing them across rows gives the real transit
+    # time (around 22 s) rather than a fixed guess.
     pit_windows={}
     laps=session.laps
 
     for driver_no in drivers:
         drv=session.get_driver(driver_no)["Abbreviation"]
-        driver_laps=laps.pick_drivers(drv)
+        driver_laps=laps.pick_drivers(drv).sort_values("LapNumber")
+        rows=list(driver_laps.iterrows())
         windows=[]
 
-        for _, lap in driver_laps.iterrows():
+        for index, (_, lap) in enumerate(rows):
             pit_in=lap.get("PitInTime")
-            pit_out=lap.get("PitOutTime")
+            if not pd.notna(pit_in):
+                continue
 
-            if pd.notna(pit_in):
-                start=pit_in.total_seconds()
+            start=pit_in.total_seconds()
+            end=None
+            # The rejoin is on the next lap; allow one more in case a lap is
+            # missing from the data.
+            for _, following in rows[index + 1:index + 3]:
+                pit_out=following.get("PitOutTime")
                 if pd.notna(pit_out):
-                    end=pit_out.total_seconds()
-                else:
-                    end=start+40 #Error Rare case
-                
-                windows.append((start,end))
+                    candidate=pit_out.total_seconds()
+                    if candidate > start:
+                        end=candidate
+                    break
+
+            if end is None:
+                end=start+DEFAULT_PIT_TRANSIT_S  # never rejoined, or data gap
+
+            windows.append((start,end))
         pit_windows[drv]=windows
     
     #Adjusting pit windows to the telemetry timeline
@@ -905,7 +923,6 @@ def get_race_telemetry(session, session_type="R"):
             shifted.append((start-global_t_min,end-global_t_min))
         pit_windows_shifted[drv]=shifted
     
-    print("PIT WINDOWS: ", pit_windows)
 
     # 5. Build the frames + LIVE LEADERBOARD
     frames = []

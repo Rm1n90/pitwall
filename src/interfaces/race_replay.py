@@ -17,6 +17,8 @@ from src.ui_components import (
     build_track_from_example_lap,
     draw_finish_line
 )
+from src.render.cars import draw_car, draw_label, draw_safety_car
+from src.render.track import TrackRenderer, corner_labels_from_circuit_info
 from src.tyre_degradation_integration import TyreDegradationIntegrator
 from src.services.stream import TelemetryStreamServer
 
@@ -26,12 +28,18 @@ SCREEN_HEIGHT = 720
 SCREEN_TITLE = "Pitwall"
 PLAYBACK_SPEEDS = [0.1, 0.2, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0]
 
+# Room kept clear for the session banner and the playback controls, so the
+# circuit is never drawn underneath them.
+TOP_UI_MARGIN = 90
+BOTTOM_UI_MARGIN = 120
+
 class F1RaceReplayWindow(arcade.Window):
     def __init__(self, frames, track_statuses, example_lap, drivers, title,
                  playback_speed=1.0, driver_colors=None, circuit_rotation=0.0,
                  left_ui_margin=340, right_ui_margin=260, total_laps=None, visible_hud=True,
                  session_info=None, session=None, enable_telemetry=False,
-                 race_control_messages=None, live_engine=None):
+                 race_control_messages=None, live_engine=None,
+                 circuit_info=None, pit_lane=None):
         # Set resizable to True so the user can adjust mid-sim
         super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, title, resizable=True)
         self.maximize()
@@ -204,6 +212,23 @@ class F1RaceReplayWindow(arcade.Window):
         self.world_inner_points = self._interpolate_points(self.x_inner, self.y_inner)
         self.world_outer_points = self._interpolate_points(self.x_outer, self.y_outer)
 
+        # Circuit renderer: asphalt, kerbs, corner numbers and the pit lane.
+        drs_ranges = [(z["start"]["index"], z["end"]["index"])
+                      for z in (self.drs_zones or [])]
+        try:
+            self.track_renderer = TrackRenderer(
+                np.asarray(self.plot_x_ref, dtype=float),
+                np.asarray(self.plot_y_ref, dtype=float),
+                track_width=200.0,
+                corners=corner_labels_from_circuit_info(circuit_info)
+                if circuit_info is not None else [],
+                pit_lane=pit_lane or [],
+                drs_zones=drs_ranges,
+            )
+        except Exception as e:
+            print(f"Falling back to the simple track outline: {e}")
+            self.track_renderer = None
+
         # These will hold the actual screen coordinates to draw
         self.screen_inner_points = []
         self.screen_outer_points = []
@@ -233,6 +258,20 @@ class F1RaceReplayWindow(arcade.Window):
         # store previous leaderboard order for up/down arrows
         self.last_leaderboard_order = None
         
+        # Optional automated screenshot, used for documentation images and
+        # for checking rendering changes without a person watching.
+        self._screenshot_path = os.environ.get("PITWALL_SCREENSHOT") or None
+        self._screenshot_at = float(os.environ.get("PITWALL_SCREENSHOT_AFTER", 4))
+        self._screenshot_taken = False
+        self._opened_at = time.time()
+        seek = os.environ.get("PITWALL_SEEK")
+        if seek:
+            try:
+                self.frame_index = max(0.0, min(float(seek), max(0, self.n_frames - 1)))
+                self.paused = True
+            except ValueError:
+                print(f"Ignoring invalid PITWALL_SEEK: {seek!r}")
+
         # Broadcast initial telemetry state
         self._broadcast_telemetry_state()
 
@@ -1237,8 +1276,12 @@ class F1RaceReplayWindow(arcade.Window):
         # Reserve left/right UI margins before applying padding so the track
         # never overlaps side UI elements (leaderboard, telemetry, legends).
         inner_w = max(1.0, screen_w - self.left_ui_margin - self.right_ui_margin)
+        # The session banner sits across the top and the controls across the
+        # bottom; without reserving room for them cars disappear underneath.
+        top_margin = TOP_UI_MARGIN if self.session_info_comp.visible else 20
+        inner_h = max(1.0, screen_h - top_margin - BOTTOM_UI_MARGIN)
         usable_w = inner_w * (1 - 2 * padding)
-        usable_h = screen_h * (1 - 2 * padding)
+        usable_h = inner_h * (1 - 2 * padding)
 
         # Calculate scale to fit whichever dimension is the limiting factor
         scale_x = usable_w / world_w
@@ -1249,7 +1292,7 @@ class F1RaceReplayWindow(arcade.Window):
         # world_cx/world_cy are unchanged by rotation about centre
         # Center within the available inner area (left_ui_margin .. screen_w - right_ui_margin)
         screen_cx = self.left_ui_margin + inner_w / 2
-        screen_cy = screen_h / 2
+        screen_cy = BOTTOM_UI_MARGIN + inner_h / 2
 
         self.tx = screen_cx - self.world_scale * world_cx
         self.ty = screen_cy - self.world_scale * world_cy
@@ -1257,6 +1300,16 @@ class F1RaceReplayWindow(arcade.Window):
         # Update the polyline screen coordinates based on new scale
         self.screen_inner_points = [self.world_to_screen(x, y) for x, y in self.world_inner_points]
         self.screen_outer_points = [self.world_to_screen(x, y) for x, y in self.world_outer_points]
+
+        # The circuit is baked into GPU buffers, so it only needs rebuilding
+        # when the view changes rather than every frame.
+        renderer = getattr(self, "track_renderer", None)
+        if renderer is not None:
+            try:
+                renderer.rebuild(self.world_to_screen)
+            except Exception as e:
+                print(f"Could not rebuild the circuit: {e}")
+                self.track_renderer = None
 
     def on_resize(self, width, height):
         """Called automatically by Arcade when window is resized."""
@@ -1346,142 +1399,64 @@ class F1RaceReplayWindow(arcade.Window):
         elif current_track_status == "6" or current_track_status == "7":
             track_color = STATUS_COLORS.get("VSC")
             
-        if len(self.screen_inner_points) > 1:
-            arcade.draw_line_strip(self.screen_inner_points, track_color, 4)
-        if len(self.screen_outer_points) > 1:
-            arcade.draw_line_strip(self.screen_outer_points, track_color, 4)
-        
-        # 2.5 Draw DRS Zones (green segments on outer track edge)
-        if hasattr(self, 'drs_zones') and self.drs_zones and self.toggle_drs_zones:
-            drs_color = (0, 255, 0)  # Bright green for DRS zones
-            
-            for _, zone in enumerate(self.drs_zones):
-                start_idx = zone["start"]["index"]
-                end_idx = zone["end"]["index"]
-                
-                # Extract the outer track points for this DRS zone segment
-                drs_outer_points = []
-                for i in range(start_idx, min(end_idx + 1, len(self.x_outer))):
-                    x = self.x_outer.iloc[i]
-                    y = self.y_outer.iloc[i]
-                    sx, sy = self.world_to_screen(x, y)
-                    drs_outer_points.append((sx, sy))
-                
-                # Draw the DRS zone segment
-                if len(drs_outer_points) > 1:
-                    arcade.draw_line_strip(drs_outer_points, drs_color, 6)
+        if self.track_renderer is not None:
+            # Only tint the edges when the session is not under green flags.
+            self.track_renderer.draw(
+                self.world_to_screen,
+                show_drs=self.toggle_drs_zones,
+                status_color=None if current_track_status in ("1", "")
+                else track_color,
+            )
+        else:
+            if len(self.screen_inner_points) > 1:
+                arcade.draw_line_strip(self.screen_inner_points, track_color, 4)
+            if len(self.screen_outer_points) > 1:
+                arcade.draw_line_strip(self.screen_outer_points, track_color, 4)
 
         draw_finish_line(self)
         # 3. Draw Cars
         frame = self.frames[idx]
-        
-        # Get selected drivers list safely
+
         selected_drivers = getattr(self, "selected_drivers", [])
         if not selected_drivers and getattr(self, "selected_driver", None):
             selected_drivers = [self.selected_driver]
 
-        for i, (code, pos) in enumerate(frame["drivers"].items()):
-            sx, sy = self.world_to_screen(pos["x"], pos["y"])
+        leader_code = None
+        for code, car in frame["drivers"].items():
+            if car.get("position") == 1:
+                leader_code = code
+                break
+
+        for order, (code, car) in enumerate(frame["drivers"].items()):
+            screen_x, screen_y = self.world_to_screen(car["x"], car["y"])
             color = self.driver_colors.get(code, arcade.color.WHITE)
-            
             is_selected = code in selected_drivers
-            
+
             if self.show_driver_labels or is_selected:
-                # Find closest point index on reference track (Optimized KD-Tree)
-                _, idx = self.track_tree.query([pos["x"], pos["y"]])
-                idx = int(idx)
-                
-                # Get normal vector in world space
-                nx = self._ref_nx[idx]
-
-                ny = self._ref_ny[idx]
-                
-                # Rotate normal to screen space
+                # Point the label away from the track so it never sits on the
+                # racing surface.
+                _, nearest = self.track_tree.query([car["x"], car["y"]])
+                nearest = int(nearest)
+                nx = self._ref_nx[nearest]
+                ny = self._ref_ny[nearest]
                 if self._rot_rad:
-                    snx = nx * self._cos_rot - ny * self._sin_rot
-                    sny = nx * self._sin_rot + ny * self._cos_rot
-                else:
-                    snx, sny = nx, ny
-                
-                offset_dist = 45 if i % 2 == 0 else 75
-                
-                lx = sx + snx * offset_dist
-                ly = sy + sny * offset_dist
-                
-                arcade.draw_line(sx, sy, lx, ly, color, 1)
-                
-                anchor_x = "left" if snx >= 0 else "right"
-                text_padding = 3 if snx >= 0 else -3
-                arcade.draw_text(code, lx + text_padding, ly, color, 10, anchor_x=anchor_x, anchor_y="center", bold=True)
+                    nx, ny = (nx * self._cos_rot - ny * self._sin_rot,
+                              nx * self._sin_rot + ny * self._cos_rot)
+                draw_label(screen_x, screen_y, code, color, (nx, ny),
+                           distance=34.0 if order % 2 == 0 else 58.0)
 
-            arcade.draw_circle_filled(sx, sy, 6, color)
-        
+            draw_car(screen_x, screen_y, color, car,
+                     is_leader=(code == leader_code), is_selected=is_selected)
+
         # 3b. Draw Safety Car (if active)
         sc_data = frame.get("safety_car")
         if sc_data is not None:
-            sc_x = sc_data["x"]
-            sc_y = sc_data["y"]
-            sc_phase = sc_data.get("phase", "on_track")
-            sc_alpha = sc_data.get("alpha", 1.0)
-            
-            sc_sx, sc_sy = self.world_to_screen(sc_x, sc_y)
-            
-            # Safety car color: bright orange/amber
-            sc_base_color = (255, 165, 0)  # Orange
-            
-            # Calculate alpha for the car body
-            body_alpha = int(255 * max(0.1, sc_alpha))
-            sc_color_with_alpha = (*sc_base_color, body_alpha)
-            
-            # Pulsing glow effect during deploying/returning phases
-            if sc_phase in ("deploying", "returning"):
-                pulse = 0.5 + 0.5 * np.sin(time.time() * 8.0)  # Fast pulse
-                glow_radius = 16 + pulse * 6
-                glow_alpha = int(80 * sc_alpha * pulse)
-                
-                # Outer glow ring
-                arcade.draw_circle_filled(sc_sx, sc_sy, glow_radius, (255, 200, 0, glow_alpha))
-                arcade.draw_circle_outline(sc_sx, sc_sy, glow_radius + 2, (255, 100, 0, int(glow_alpha * 0.6)), 2)
-                
-                # Draw dashed trail line from pit to track position
-                trail_alpha = int(120 * sc_alpha)
-                trail_color = (255, 165, 0, trail_alpha)
-                arcade.draw_circle_outline(sc_sx, sc_sy, 12, trail_color, 2)
-            else:
-                # Steady glow when on track
-                arcade.draw_circle_filled(sc_sx, sc_sy, 14, (255, 165, 0, 40))
-            
-            # Draw SC body (larger than regular cars)
-            arcade.draw_circle_filled(sc_sx, sc_sy, 8, sc_color_with_alpha)
-            
-            # Orange outline ring
-            outline_alpha = int(255 * sc_alpha)
-            arcade.draw_circle_outline(sc_sx, sc_sy, 9, (255, 100, 0, outline_alpha), 2)
-            
-            # "SC" label - always visible
-            label_alpha = int(255 * max(0.3, sc_alpha))
-            label_color = (255, 255, 255, label_alpha)
-            arcade.draw_text(
-                "SC", sc_sx + 14, sc_sy + 2, label_color, 11,
-                anchor_x="left", anchor_y="center", bold=True
-            )
-            
-            # Phase indicator text during transitions
-            if sc_phase == "deploying":
-                phase_text = "SC DEPLOYING"
-                phase_color = (255, 200, 0, int(200 * sc_alpha))
-                arcade.draw_text(
-                    phase_text, sc_sx, sc_sy - 18, phase_color, 8,
-                    anchor_x="center", anchor_y="top", bold=True
-                )
-            elif sc_phase == "returning":
-                phase_text = "SC IN"
-                phase_color = (255, 200, 0, int(200 * sc_alpha))
-                arcade.draw_text(
-                    phase_text, sc_sx, sc_sy - 18, phase_color, 8,
-                    anchor_x="center", anchor_y="top", bold=True
-                )
-        
+            sc_x, sc_y = self.world_to_screen(sc_data["x"], sc_data["y"])
+            draw_safety_car(sc_x, sc_y,
+                            sc_data.get("phase", "on_track"),
+                            sc_data.get("alpha", 1.0),
+                            pulse_phase=time.time())
+
         # --- UI ELEMENTS (Dynamic Positioning) ---
         
         # Determine Leader info using projected along-track distance (more robust than dist)
@@ -1596,6 +1571,22 @@ class F1RaceReplayWindow(arcade.Window):
         # Live indicator sits above everything else
         if self.live is not None:
             self.live.draw_badge()
+
+        self._maybe_screenshot()
+
+    def _maybe_screenshot(self) -> None:
+        """Save a screenshot and quit, when asked to by the environment."""
+        if self._screenshot_taken or not self._screenshot_path:
+            return
+        if time.time() - self._opened_at < self._screenshot_at:
+            return
+        self._screenshot_taken = True
+        try:
+            arcade.get_image().save(self._screenshot_path)
+            print(f"Saved screenshot to {self._screenshot_path}")
+        except Exception as e:
+            print(f"Could not save the screenshot: {e}")
+        arcade.close_window()
 
     def _draw_waiting_for_live(self):
         """Placeholder shown until the live feed produces its first frame."""
