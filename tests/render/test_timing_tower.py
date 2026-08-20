@@ -62,3 +62,29 @@ class TestVisibility:
         assert tower.toggle_visibility() is False
         tower.set_visible()
         assert tower.visible is True
+
+
+class TestPitStopTimes:
+    def _tower(self):
+        from src.lib.pit_stops import PitStop
+
+        tower = TimingTower(x=0)
+        tower.pit_times = {"AAA": [PitStop(lap=13, stationary_s=2.6,
+                                           pit_lane_s=21.7),
+                                   PitStop(lap=30, stationary_s=3.1,
+                                           pit_lane_s=22.4)]}
+        return tower
+
+    def test_shows_the_most_recent_completed_stop(self):
+        tower = self._tower()
+        assert tower.latest_stop("AAA", 20).stationary_s == 2.6
+        assert tower.latest_stop("AAA", 40).stationary_s == 3.1
+
+    def test_a_stop_that_has_not_happened_yet_is_not_shown(self):
+        assert self._tower().latest_stop("AAA", 5) is None
+
+    def test_a_driver_with_no_stops_returns_nothing(self):
+        assert self._tower().latest_stop("ZZZ", 40) is None
+
+    def test_without_a_lap_the_last_known_stop_is_used(self):
+        assert self._tower().latest_stop("AAA", None).stationary_s == 3.1

@@ -10,6 +10,7 @@ from src.interfaces.live_mode import LiveModeController  # noqa: E402
 class _StubComponent:
     def __init__(self):
         self.session_info = {"total_laps": None}
+        self.pit_times = {}
         self.calls = []
 
     def set_race_data(self, **kwargs):
@@ -21,7 +22,10 @@ class _StubEngine:
         self.statuses = [{"status": "1", "start_time": 0.0, "end_time": None}]
         self.laps = 70
         self.colors = {"NOR": (244, 118, 0)}
-        self.state = type("S", (), {"race_control_messages": []})()
+        self.state = type("S", (), {
+            "race_control_messages": [],
+            "pit_stops_by_code": lambda self=None: {},
+        })()
 
     def track_statuses(self):
         return self.statuses
@@ -60,6 +64,7 @@ class _StubWindow:
         self.race_control_messages = []
         self.session_info_comp = _StubComponent()
         self.progress_bar_comp = _StubComponent()
+        self.leaderboard_comp = _StubComponent()
         self.width = 1280
         self.height = 720
 
@@ -143,6 +148,21 @@ class TestMetadataRefresh:
         controller.on_update(0.04)
 
         assert controller.window.has_weather is True
+
+    def test_pit_stop_times_reach_the_timing_tower(self, controller):
+        # These are published separately from the live feed.
+        controller.engine.state.pit_stops_by_code = lambda: {"NOR": ["stop"]}
+        controller.on_update(0.04)
+        assert controller.window.leaderboard_comp.pit_times == {"NOR": ["stop"]}
+
+    def test_failing_pit_stop_times_do_not_block_the_refresh(self, controller):
+        def _boom():
+            raise RuntimeError("archive down")
+
+        controller.engine.state.pit_stops_by_code = _boom
+        controller.on_update(0.04)
+        # Everything else still refreshed.
+        assert controller.window.total_laps == 70
 
     def test_a_failing_engine_does_not_break_playback(self, controller):
         def _boom():

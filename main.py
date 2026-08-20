@@ -151,6 +151,14 @@ def main(year=None, round_number=None, playback_speed=1, session_type='R', visib
     except Exception as e:
         print(f"Corner markers unavailable: {e}")
 
+    # Real stationary times, published in the timing archive
+    pit_stop_times = None
+    try:
+        from src.lib.pit_stops import fetch_for_session
+        pit_stop_times = fetch_for_session(session)
+    except Exception as e:
+        print(f"Pit stop times unavailable: {e}")
+
     pit_lane = None
     try:
         from src.lib.pit_lane import get_pit_lane
@@ -196,7 +204,8 @@ def main(year=None, round_number=None, playback_speed=1, session_type='R', visib
       enable_telemetry=True,
       race_control_messages=race_telemetry.get('race_control_messages', []),
       circuit_info=circuit_info,
-      pit_lane=pit_lane
+      pit_lane=pit_lane,
+      pit_stop_times=pit_stop_times
     )
 
 if __name__ == "__main__":

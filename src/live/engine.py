@@ -20,7 +20,6 @@ from src.live.buffer import LiveFrameBuffer
 from src.live.config import (
     LIVE_DT,
     SOURCE_AUTO,
-    SOURCE_SIGNALR,
     SOURCE_SIMULATED,
     SOURCE_STATIC,
     LiveConfig,
@@ -106,13 +105,33 @@ class LiveRaceEngine:
             record_path=self.config.record_path,
         )
 
-    def _make_static_source(self, start_at_end: bool = True) -> LiveDataSource:
-        from src.live.sources.static_stream import StaticStreamSource
+    def _make_static_source(self, start_at_end: bool = True,
+                            topics=None) -> LiveDataSource:
+        from src.live.sources.static_stream import (
+            DEFAULT_STATIC_TOPICS,
+            StaticStreamSource,
+        )
 
         return StaticStreamSource(
             session_path=self.session_ref.path,
+            topics=topics or DEFAULT_STATIC_TOPICS,
             poll_interval_s=self.config.poll_interval_s,
             start_at_end=start_at_end,
+        )
+
+    def _make_supplementary_source(self) -> LiveDataSource:
+        """Poll only the topics the SignalR subscription does not carry."""
+        from src.live.sources.static_stream import (
+            SUPPLEMENTARY_TOPICS,
+            StaticStreamSource,
+        )
+
+        return StaticStreamSource(
+            session_path=self.session_ref.path,
+            topics=SUPPLEMENTARY_TOPICS,
+            # Pit stops happen every few minutes, so this can be lazy.
+            poll_interval_s=max(10.0, self.config.poll_interval_s),
+            start_at_end=False,
         )
 
     def _make_simulated_source(self) -> LiveDataSource:
@@ -130,11 +149,14 @@ class LiveRaceEngine:
             return [self._make_simulated_source()]
         if source == SOURCE_STATIC:
             return [self._make_static_source()]
-        if source == SOURCE_SIGNALR:
-            return [self._make_signalr_source()]
-        # auto: SignalR for the lowest latency, with the public static feed
-        # added later only if car positions never turn up.
-        return [self._make_signalr_source()]
+        # SignalR does not publish pit stop times, so a slow archive poller
+        # runs alongside it for those.
+        sources = [self._make_signalr_source()]
+        try:
+            sources.append(self._make_supplementary_source())
+        except Exception as exc:
+            print(f"[live] pit stop times unavailable: {exc}")
+        return sources
 
     def start(self) -> None:
         """Start the sources and the frame producing thread."""

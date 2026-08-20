@@ -81,7 +81,8 @@ class LiveConfig:
         "Heartbeat", "DriverList", "SessionInfo", "SessionStatus",
         "SessionData", "TrackStatus", "LapCount", "TimingData",
         "TimingAppData", "TimingStats", "WeatherData",
-        "RaceControlMessages", "Position.z", "CarData.z",
+        "RaceControlMessages", "ExtrapolatedClock",
+        "Position.z", "CarData.z",
     ))
 
     def __post_init__(self):

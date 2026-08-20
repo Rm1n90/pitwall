@@ -273,6 +273,10 @@ class LiveFrameBuilder:
             weather = self._weather()
             if weather:
                 frame["weather"] = weather
+
+            remaining = state.time_remaining_s(t)
+            if remaining is not None:
+                frame["time_remaining_s"] = remaining
             frame["safety_car"] = self._safety_car(t, drivers)
             return frame
 

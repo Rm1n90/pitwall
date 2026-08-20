@@ -24,7 +24,8 @@ python main.py            # pick any past session from the GUI
 
 - **Live Sessions:** Follow a race, sprint, qualifying or practice session in real time, rewind into what you missed, and jump back to live with **G**.
 - **Circuit View:** The track drawn as a racing surface with kerbs on the corners, numbered corners, a runoff apron and the pit lane traced from telemetry. Cars carry their team colour, a tyre-compound ring, a DRS glow and a leader marker.
-- **Timing Tower:** Running order with gaps, places gained or lost against the grid, tyre compound and age, pit stop count, and last lap time coloured purple for the session best and green for a personal best.
+- **Timing Tower:** Running order with gaps, places gained or lost against the grid, tyre compound and age, pit stop count and the real stationary time in the box, and last lap time coloured purple for the session best and green for a personal best.
+- **Session Countdown:** Live sessions show the time remaining, continued from race control's clock rather than read off a value that only updates when the clock starts or stops.
 - **Race Replay Visualization:** Watch the race unfold with real-time driver positions on a rendered track.
 - **Safety Car Visualization:** See the Safety Car deploy from pit lane, lead the field, and return to pits — with animated transitions and pulsing glow effects.
 - **Insights Menu:** Floating menu for quick access to telemetry analysis tools (launches automatically with replay).

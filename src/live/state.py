@@ -328,6 +328,10 @@ class LiveSessionState:
                                    "Message": "AllClear"}
         self.track_status_history: List[dict] = []
         self.race_control_messages: List[dict] = []
+        #: ``{car_number: [PitStop, ...]}`` of published pit stop times.
+        self.pit_stops: Dict[str, list] = {}
+        #: Time left in the session, as published by race control.
+        self.extrapolated_clock: dict = {}
         self.samples: Dict[str, DriverSamples] = {}
 
         #: UTC instant that frame time ``t = 0`` corresponds to.
@@ -482,6 +486,19 @@ class LiveSessionState:
                 "racing_number": str(entry.get("RacingNumber", "")),
             })
 
+    def _apply_pit_stops(self, message: LiveMessage) -> None:
+        from src.lib.pit_stops import parse_pit_stop_series
+
+        parsed = parse_pit_stop_series(message.data)
+        for number, stops in parsed.items():
+            # The feed resends the whole series, so replacing is correct and
+            # avoids accumulating duplicates.
+            self.pit_stops[str(number)] = stops
+
+    def _apply_extrapolated_clock(self, message: LiveMessage) -> None:
+        if isinstance(message.data, dict):
+            merge_patch(self.extrapolated_clock, message.data)
+
     def _apply_position(self, message: LiveMessage) -> None:
         data = message.data
         if not isinstance(data, dict):
@@ -616,6 +633,44 @@ class LiveSessionState:
         with self._lock:
             return sum(s.rejected_count for s in self.samples.values())
 
+    def time_remaining_s(self, t: Optional[float] = None) -> Optional[float]:
+        """Return the seconds left in the session, if race control says.
+
+        The feed is named for what it expects of a client: when
+        ``Extrapolating`` is set, ``Remaining`` is only correct as at ``Utc``
+        and the countdown has to be continued from there. F1 publishes an
+        update when the clock starts or stops, not every second, so taking
+        the value at face value leaves it frozen at the time of the last
+        update. When the clock is held, under a red flag for instance,
+        ``Extrapolating`` is false and the value stands as published.
+
+        Args:
+            t: Current replay time in seconds. Without it the published value
+                is returned unadjusted.
+        """
+        from src.live.decoding import parse_stream_time
+
+        remaining = parse_stream_time(
+            self.extrapolated_clock.get("Remaining"))
+        if remaining is None:
+            return None
+        seconds = remaining.total_seconds()
+
+        if t is not None and self.extrapolated_clock.get("Extrapolating"):
+            issued = parse_utc(self.extrapolated_clock.get("Utc"))
+            if issued is not None and self.t0 is not None:
+                elapsed = (self.t0 + timedelta(seconds=t) - issued
+                           ).total_seconds()
+                seconds -= elapsed
+
+        return max(0.0, seconds)
+
+    def pit_stops_by_code(self) -> Dict[str, list]:
+        """Return published pit stop times keyed by driver code."""
+        with self._lock:
+            return {self.driver_code(number): stops
+                    for number, stops in self.pit_stops.items()}
+
     def has_position_data(self) -> bool:
         with self._lock:
             return any(samples.times for samples in self.samples.values())
@@ -631,6 +686,8 @@ _HANDLERS = {
     "LapCount": LiveSessionState._apply_lap_count,
     "TrackStatus": LiveSessionState._apply_track_status,
     "RaceControlMessages": LiveSessionState._apply_race_control,
+    "PitStopSeries": LiveSessionState._apply_pit_stops,
+    "ExtrapolatedClock": LiveSessionState._apply_extrapolated_clock,
     "Position": LiveSessionState._apply_position,
     "CarData": LiveSessionState._apply_car_data,
 }

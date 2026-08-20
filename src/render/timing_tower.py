@@ -22,8 +22,9 @@ COL_CHANGE = 24
 COL_CODE = 42
 COL_GAP = 92
 COL_TYRE = 158
-COL_PITS = 200
-COL_LAP = 222
+COL_PITS = 198
+COL_STOP = 214
+COL_LAP = 258
 
 BACKGROUND = (18, 19, 23, 210)
 ROW_ALTERNATE = (26, 28, 34, 150)
@@ -97,6 +98,8 @@ class TimingTower:
         self.session_best_code: Optional[str] = None
         #: ``{code: personal_best_seconds}``.
         self.personal_bests: Dict[str, float] = {}
+        #: ``{code: [PitStop, ...]}``, for the stationary time in the box.
+        self.pit_times: Dict[str, List] = {}
         #: Leader's most recent lap time, used to turn part-laps into seconds.
         self.reference_lap_s: float = FALLBACK_LAP_TIME_S
 
@@ -155,8 +158,8 @@ class TimingTower:
     def _draw_header(self, top: float) -> None:
         arcade.Text("TIMING", self.x, top, TEXT_COLOR, 15, bold=True,
                     anchor_x="left", anchor_y="top").draw()
-        labels = ((COL_GAP, "GAP"), (COL_TYRE, "TYRE"),
-                  (COL_PITS, "PIT"), (COL_LAP, "LAST"))
+        labels = ((COL_GAP, "GAP"), (COL_TYRE, "TYRE"), (COL_PITS, "PIT"),
+                  (COL_STOP, "STOP"), (COL_LAP, "LAST"))
         for offset, label in labels:
             arcade.Text(label, self.x + offset, top - 24, HEADER_COLOR, 8,
                         bold=True, anchor_x="left", anchor_y="top").draw()
@@ -204,6 +207,7 @@ class TimingTower:
         stops = car.get("pit_stops")
         self._text("—" if stops is None else str(stops),
                    COL_PITS + 4, text_y, MUTED_COLOR, 11)
+        self._draw_stop_time(code, car, text_y)
 
         self._draw_last_lap(code, text_y, retired)
 
@@ -249,6 +253,29 @@ class TimingTower:
         except (TypeError, ValueError):
             age = 0
         self._text(str(age), COL_TYRE + 18, text_y, MUTED_COLOR, 10)
+
+    def latest_stop(self, code: str, lap: Optional[int]):
+        """Return the driver's most recent completed stop, if any."""
+        stops = self.pit_times.get(code)
+        if not stops:
+            return None
+        if lap is None:
+            return stops[-1]
+        done = [s for s in stops if s.lap is None or s.lap <= lap]
+        return done[-1] if done else None
+
+    def _draw_stop_time(self, code: str, car: dict, text_y: float) -> None:
+        """Show how long the driver's last stop actually took."""
+        try:
+            lap = int(car.get("lap"))
+        except (TypeError, ValueError):
+            lap = None
+        stop = self.latest_stop(code, lap)
+        if stop is None or stop.stationary_s is None:
+            self._text("—", COL_STOP + 4, text_y, MUTED_COLOR, 10)
+            return
+        self._text(f"{stop.stationary_s:.1f}", COL_STOP, text_y,
+                   PIT_COLOR, 10)
 
     def _draw_last_lap(self, code: str, text_y: float, retired: bool) -> None:
         last = self.last_laps.get(code)

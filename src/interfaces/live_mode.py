@@ -125,6 +125,16 @@ class LiveModeController:
         except Exception as exc:
             print(f"[live] could not refresh session metadata: {exc}")
 
+        # Pit stop times are published separately from the live feed, so a
+        # problem fetching them must not hold up anything above.
+        try:
+            stops = self.engine.state.pit_stops_by_code()
+            tower = getattr(window, "leaderboard_comp", None)
+            if stops and tower is not None:
+                tower.pit_times = stops
+        except Exception as exc:
+            print(f"[live] pit stop times unavailable: {exc}")
+
     # -- input -----------------------------------------------------------
 
     def on_key_press(self, symbol: int) -> bool:

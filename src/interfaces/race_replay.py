@@ -37,10 +37,10 @@ BOTTOM_UI_MARGIN = 120
 class F1RaceReplayWindow(arcade.Window):
     def __init__(self, frames, track_statuses, example_lap, drivers, title,
                  playback_speed=1.0, driver_colors=None, circuit_rotation=0.0,
-                 left_ui_margin=340, right_ui_margin=330, total_laps=None, visible_hud=True,
+                 left_ui_margin=340, right_ui_margin=360, total_laps=None, visible_hud=True,
                  session_info=None, session=None, enable_telemetry=False,
                  race_control_messages=None, live_engine=None,
-                 circuit_info=None, pit_lane=None):
+                 circuit_info=None, pit_lane=None, pit_stop_times=None):
         # Set resizable to True so the user can adjust mid-sim
         super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, title, resizable=True)
         self.maximize()
@@ -99,7 +99,8 @@ class F1RaceReplayWindow(arcade.Window):
         self.show_driver_labels = False
         # UI components
         leaderboard_x = max(20, self.width - self.right_ui_margin + 12)
-        self.leaderboard_comp = TimingTower(x=leaderboard_x, width=290, visible=visible_hud)
+        self.leaderboard_comp = TimingTower(x=leaderboard_x, width=320, visible=visible_hud)
+        self.leaderboard_comp.pit_times = pit_stop_times or {}
         self.weather_comp = WeatherComponent(left=20, top_offset=170, visible=visible_hud)
         self.legend_comp = LegendComponent(x=max(12, self.left_ui_margin - 320), visible=visible_hud)
         self.driver_info_comp = DriverInfoComponent(left=20, width=300)
@@ -1515,7 +1516,18 @@ class F1RaceReplayWindow(arcade.Window):
         # Draw HUD - Top Left
         if self.visible_hud:
             self.lap_text.text = lap_str
-            self.time_text.text = f"Race Time: {time_str} (x{self.playback_speed})"
+            remaining = frame.get("time_remaining_s")
+            if remaining is not None:
+                hours_left = int(remaining // 3600)
+                minutes_left = int((remaining % 3600) // 60)
+                seconds_left = int(remaining % 60)
+                self.time_text.text = (
+                    f"Remaining: {hours_left:02}:{minutes_left:02}:"
+                    f"{seconds_left:02}"
+                )
+            else:
+                self.time_text.text = \
+                    f"Race Time: {time_str} (x{self.playback_speed})"
             # default no status text
             self.status_text.text = ""
             # update status color and text if required

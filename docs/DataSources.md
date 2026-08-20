@@ -19,18 +19,25 @@ Grand Prix feed rather than taken from documentation.
 
 `SessionInfo` · `SessionStatus` · `DriverList` · `TimingData` · `TimingAppData`
 · `WeatherData` · `LapCount` · `TrackStatus` · `RaceControlMessages` ·
-`Position.z` · `CarData.z`
+`Position.z` · `CarData.z` · `ExtrapolatedClock` · `PitStopSeries`
+
+`PitStopSeries` is not part of the SignalR subscription — subscribing to it
+returns nothing. It is only in the static archive, so a replay fetches it for
+the session and a live session polls it slowly alongside the main feed.
+
+`ExtrapolatedClock` is named for what it expects of a client. It is published
+when the clock starts or stops, not every second, and while `Extrapolating` is
+set the countdown has to be continued from `Utc` rather than read off
+`Remaining`. Under a red flag `Extrapolating` goes false and the value stands.
 
 ### Available and worth having
 
 | Feed | What it carries | What it would give us |
 |------|-----------------|-----------------------|
-| **PitStopSeries** | Stationary time and pit lane time per stop, by lap: `{"PitStopTime": "2.1", "PitLaneTime": "21.789", "Lap": "8"}` | Real pit stop durations. Today pit windows are inferred from lap timing and the stationary time is not shown at all. |
 | **TimingStats** | Personal best lap, best sector times with field position, best speeds at each trap | A proper timing tower: purple/green sector colouring, speed trap rankings |
 | **TyreStintSeries** | Every stint for every driver with compound, age and whether the set was new | A full strategy chart without deriving it from lap data |
 | **OvertakeSeries** | Timestamped overtake counts per driver | Overtake markers on the progress bar, an "on the move" indicator |
 | **LapSeries** | Each driver's position at the end of every lap | The classic position-change chart across the race |
-| **ExtrapolatedClock** | Time remaining in the session | A session countdown, which a race with a 2-hour limit needs |
 | **ChampionshipPrediction** | Live projected championship positions for drivers and teams | "If the race ended now" standings |
 | **TeamRadio** | Timestamped MP3 clips per driver | Radio messages on the timeline, playable |
 | **CurrentTyres** | Current compound and whether new | Simpler and more direct than deriving from `TimingAppData` |

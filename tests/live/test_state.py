@@ -230,3 +230,62 @@ class TestSessionState:
         state = LiveSessionState()
         state.apply(LiveMessage("SomethingNew", {"a": 1}))
         assert state.snapshot_meta()["session_info"] == {}
+
+
+class TestExtrapolatedClock:
+    """F1 publishes the clock when it starts or stops, not every second, so a
+    client has to continue the countdown itself."""
+
+    def _state(self, remaining="01:00:00", extrapolating=True, issued=30.0):
+        state = LiveSessionState()
+        state.set_session_start(datetime(2026, 7, 26, 13, 0,
+                                         tzinfo=timezone.utc))
+        state.apply(LiveMessage("ExtrapolatedClock", {
+            "Utc": _utc(issued),
+            "Remaining": remaining,
+            "Extrapolating": extrapolating,
+        }))
+        return state
+
+    def test_reads_the_published_value(self):
+        assert self._state().time_remaining_s() == pytest.approx(3600.0)
+
+    def test_counts_down_from_when_it_was_published(self):
+        # Published at t=30 with an hour left, so at t=630 there are 50
+        # minutes left, not an hour.
+        state = self._state(issued=30.0)
+        assert state.time_remaining_s(630.0) == pytest.approx(3000.0)
+
+    def test_a_held_clock_does_not_count_down(self):
+        # Under a red flag the clock stops and the value stands as published.
+        state = self._state(extrapolating=False)
+        assert state.time_remaining_s(630.0) == pytest.approx(3600.0)
+
+    def test_never_goes_negative(self):
+        state = self._state(remaining="00:00:10")
+        assert state.time_remaining_s(99999.0) == 0.0
+
+    def test_is_unknown_without_a_clock(self):
+        assert LiveSessionState().time_remaining_s(100.0) is None
+
+
+class TestPitStopsInState:
+    def test_records_published_stop_times(self):
+        state = LiveSessionState()
+        state.apply(LiveMessage("DriverList", {"44": {"Tla": "HAM"}}))
+        state.apply(LiveMessage("PitStopSeries", {"PitTimes": {"44": [
+            {"PitStop": {"PitStopTime": "2.6", "PitLaneTime": "21.7",
+                         "Lap": "13"}},
+        ]}}))
+
+        by_code = state.pit_stops_by_code()
+        assert by_code["HAM"][0].stationary_s == 2.6
+
+    def test_a_resent_series_replaces_rather_than_duplicates(self):
+        state = LiveSessionState()
+        payload = {"PitTimes": {"1": [
+            {"PitStop": {"PitStopTime": "2.3", "Lap": "20"}}]}}
+        state.apply(LiveMessage("PitStopSeries", payload))
+        state.apply(LiveMessage("PitStopSeries", payload))
+
+        assert len(state.pit_stops["1"]) == 1

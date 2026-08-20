@@ -24,6 +24,7 @@ MODULES = [
     "src.lib.classification",
     "src.lib.lap_history",
     "src.lib.pit_lane",
+    "src.lib.pit_stops",
     "src.lib.season",
     "src.lib.track_geometry",
     "src.lib.settings",

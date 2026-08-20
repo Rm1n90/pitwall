@@ -25,9 +25,15 @@ from src.live.sources.base import LiveDataSource, SourceStatus
 
 STATIC_BASE_URL = "https://livetiming.formula1.com/static/"
 
+# Topics the SignalR subscription does not carry, so they are polled from the
+# archive even when the live feed is otherwise healthy.
+SUPPLEMENTARY_TOPICS = ("PitStopSeries",)
+
 # Topics that are only useful as a keyframe (they are tiny and rarely change)
 # are still polled, because a red flag or a driver change must show up live.
 DEFAULT_STATIC_TOPICS = (
+    "PitStopSeries",
+    "ExtrapolatedClock",
     "SessionInfo",
     "DriverList",
     "TrackStatus",
@@ -44,6 +50,8 @@ DEFAULT_STATIC_TOPICS = (
 # Feeds where only the newest state matters. Their keyframe is fetched once at
 # startup so a mid-session join immediately has a full picture.
 KEYFRAME_TOPICS = (
+    "PitStopSeries",
+    "ExtrapolatedClock",
     "SessionInfo",
     "DriverList",
     "TrackStatus",
