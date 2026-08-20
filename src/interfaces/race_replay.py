@@ -245,6 +245,21 @@ class F1RaceReplayWindow(arcade.Window):
         """
         return len(self.frames)
 
+    def _driver_progress_m(self, pos, lap, x, y):
+        """Return how far a driver has travelled, for ranking the field.
+
+        Prefers the ``progress`` value computed when the frames were built,
+        which comes from the speed-integrated distance channel. Coordinates
+        are only used for data cached before that field existed: the position
+        feed goes stale for seconds at a time, so ranking on it makes the
+        leaderboard reshuffle several times a lap.
+        """
+        progress = pos.get("progress")
+        if progress is not None:
+            return float(progress) * self._ref_total_length
+        projected_m = self._project_to_reference(x, y)
+        return float((max(lap, 1) - 1) * self._ref_total_length + projected_m)
+
     def _broadcast_telemetry_state(self):
         """Broadcast current telemetry state to connected clients."""
         if not hasattr(self, 'telemetry_stream') or not self.telemetry_stream:
@@ -273,8 +288,7 @@ class F1RaceReplayWindow(arcade.Window):
                     lap = int(lap_raw)
                 except (ValueError, TypeError):
                     lap = 1
-                projected_m = self._project_to_reference(x, y)
-                progress_m = float((max(lap, 1) - 1) * self._ref_total_length + projected_m)
+                progress_m = self._driver_progress_m(pos, lap, x, y)
                 driver_progress[code] = progress_m
                 if self._ref_total_length > 0:
                     pos["fraction"] = progress_m / self._ref_total_length
@@ -1481,12 +1495,9 @@ class F1RaceReplayWindow(arcade.Window):
             except Exception:
                 lap = 1
 
-            # Project (x,y) to reference and combine with lap count
-            projected_m = self._project_to_reference(pos.get("x", 0.0), pos.get("y", 0.0))
-
-            # progress in metres since race start: (lap-1) * lap_length + projected_m
-            progress_m = float((max(lap, 1) - 1) * self._ref_total_length + projected_m)
-
+            progress_m = self._driver_progress_m(
+                pos, lap, pos.get("x", 0.0), pos.get("y", 0.0)
+            )
             driver_progress[code] = progress_m
 
         # Leader is the one with greatest progress_m
@@ -1547,7 +1558,13 @@ class F1RaceReplayWindow(arcade.Window):
             color = self.driver_colors.get(code, arcade.color.WHITE)
             progress_m = driver_progress.get(code, float(pos.get("dist", 0.0)))
             driver_list.append((code, color, pos, progress_m))
-        driver_list.sort(key=lambda x: x[3], reverse=True)
+
+        # The frame already carries the ranked position, which accounts for
+        # the chequered flag; fall back to progress for older cached data.
+        if all(entry[2].get("position") for entry in driver_list):
+            driver_list.sort(key=lambda entry: entry[2]["position"])
+        else:
+            driver_list.sort(key=lambda entry: entry[3], reverse=True)
 
         self.last_leaderboard_order = [c for c, _, _, _ in driver_list]
         self.leaderboard_comp.set_entries(driver_list)

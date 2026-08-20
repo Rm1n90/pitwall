@@ -44,6 +44,7 @@ The stream provides this data structure:
         "gear": 7,
         "lap": 1,
         "position": 8,
+        "progress": 1.7588,
         "rel_dist": 0.7588,
         "speed": 282.0,
         "throttle": 100.0,
@@ -83,6 +84,24 @@ The stream provides this data structure:
   "track_status": "2"
 }
 ```
+
+### Race Progress and Position
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `progress` | float | Race progress in laps: completed laps plus the fraction of the current lap. This is what the leaderboard sorts on. |
+| `dist` | float | Race distance covered in metres, i.e. `progress` times the lap length. |
+| `position` | int | Running order, 1 for the leader. |
+| `rel_dist` | float | Fraction of the current lap completed, 0.0 to 1.0. |
+
+`progress` and `dist` come from the speed-integrated distance channel rather
+than from car coordinates, because F1's position feed goes stale for seconds at
+a time. Lap one is seeded from the starting grid, and once the winner takes the
+chequered flag `position` is fixed at the official classification. See
+[src/lib/classification.py](./src/lib/classification.py).
+
+> Frames cached before this change carry no `progress` field; consumers should
+> fall back to `dist` when it is absent.
 
 ### Safety Car Data
 

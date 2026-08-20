@@ -117,13 +117,15 @@ class LiveFrameBuilder:
         if isinstance(interval, dict):
             interval = interval.get("Value", "")
 
+        progress = (lap - 1) + rel_dist
         return {
             "x": x,
             "y": y,
-            "dist": (lap - 1) * self.projector.length_m
-            + rel_dist * self.projector.length_m,
+            "dist": progress * self.projector.length_m,
             "lap": lap,
             "rel_dist": round(rel_dist, 4),
+            # Race progress in laps, matching the offline replay frames.
+            "progress": round(progress, 6),
             "tyre": float(compound),
             "tyre_life": tyre_life,
             "position": running_position,

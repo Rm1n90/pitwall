@@ -10,6 +10,12 @@ import fastf1.plotting
 import numpy as np
 import pandas as pd
 
+from src.lib.classification import (
+    GRID_SLOT_SPACING_M,
+    DriverClassification,
+    assign_positions,
+    read_classification,
+)
 from src.lib.settings import get_settings
 from src.lib.time import parse_time_string
 from src.lib.tyres import get_tyre_compound_int
@@ -546,6 +552,52 @@ def _compute_safety_car_positions(frames, track_statuses, session):
     print(f"Safety Car: Computed positions for {sc_frame_count} frames")
 
 
+def _reference_lap_length_m(session, default=5000.0):
+    """Return the circuit's lap length in metres.
+
+    Taken from the fastest lap's distance channel, which is what the replay
+    window uses for the track layout, so the two always agree.
+    """
+    try:
+        fastest = session.laps.pick_fastest()
+        if fastest is not None:
+            distance = fastest.get_telemetry()["Distance"]
+            length = float(distance.max())
+            if length > 0:
+                return length
+    except Exception as e:
+        print(f"Could not determine lap length, using a default: {e}")
+    return default
+
+
+def _build_race_progress(resampled_data, classification, lap_length_m):
+    """Return ``{code: array}`` of race progress in laps, per frame.
+
+    Progress comes from the speed-integrated distance channel rather than from
+    car coordinates: the position feed goes stale for seconds at a time, which
+    makes coordinate-derived ordering unusable. See
+    :mod:`src.lib.classification`.
+    """
+    progress = {}
+    for code, data in resampled_data.items():
+        info = classification.get(code) or DriverClassification(code)
+        offset_m = max(0, info.grid_position - 1) * GRID_SLOT_SPACING_M
+
+        laps = np.maximum(1, np.round(data["lap"]).astype(int))
+        rel = np.clip(data["rel_dist"], 0.0, 1.0)
+
+        # On lap one the field is spread across the grid, so a driver starts
+        # `offset_m` behind pole and covers that much extra ground.
+        first_lap = (rel * (lap_length_m + offset_m) - offset_m) / lap_length_m
+        later_laps = (laps - 1) + rel
+
+        values = np.where(laps == 1, first_lap, later_laps)
+        # Progress can only ever increase; clamp out the occasional one-frame
+        # dip where the lap counter and the distance channel disagree.
+        progress[code] = np.maximum.accumulate(values)
+    return progress
+
+
 def get_race_telemetry(session, session_type="R"):
     event_name = str(session).replace(" ", "_")
     cache_suffix = "sprint" if session_type == "S" else "race"
@@ -818,14 +870,26 @@ def get_race_telemetry(session, session_type="R"):
     driver_codes = list(resampled_data.keys())
     driver_arrays = {code: resampled_data[code] for code in driver_codes}
 
+    # Official grid, finishing order and flag times drive the classification
+    # at the two moments physics alone cannot resolve: the start and the
+    # finish. See src/lib/classification.py for why.
+    classification = read_classification(session, global_t_min)
+    lap_length_m = _reference_lap_length_m(session)
+    progress_by_code = _build_race_progress(
+        resampled_data, classification, lap_length_m
+    )
+
     for i in range(num_frames):
         t = timeline[i]
         snapshot = []
         for code in driver_codes:
             d = driver_arrays[code]
+            lap_progress = float(progress_by_code[code][i])
             snapshot.append({
                 "code": code,
-                "dist": float(d["dist"][i]),
+                "progress": lap_progress,
+                # Race distance covered, in metres since the start.
+                "dist": lap_progress * lap_length_m,
                 "x": float(d["x"][i]),
                 "y": float(d["y"][i]),
                 "lap": int(round(d["lap"][i])),
@@ -843,9 +907,14 @@ def get_race_telemetry(session, session_type="R"):
         if not snapshot:
             continue
 
-        # 5b. Sort by race distance to get POSITIONS (1–20)
-        # Leader = largest race distance covered
-        snapshot.sort(key=lambda r: (r.get("lap", 0), r["dist"]), reverse=True)
+        # 5b. Rank the field. Drivers still running are ordered by race
+        # progress; once a driver takes the chequered flag their place is
+        # fixed at the official result so cool-down laps cannot move anyone.
+        positions = assign_positions(
+            ((car["code"], car["progress"]) for car in snapshot),
+            t, classification,
+        )
+        snapshot.sort(key=lambda r: positions[r["code"]])
 
         leader = snapshot[0]
         leader_lap = leader["lap"]
@@ -853,9 +922,9 @@ def get_race_telemetry(session, session_type="R"):
         # 5c. Prepare frame data
         frame_data = {}
 
-        for idx, car in enumerate(snapshot):
+        for car in snapshot:
             code = car["code"]
-            position = idx + 1
+            position = positions[code]
 
             #Pit stop detection
             in_pit=False
@@ -871,6 +940,8 @@ def get_race_telemetry(session, session_type="R"):
                 "dist": car["dist"],
                 "lap": car["lap"],
                 "rel_dist": round(car["rel_dist"], 4),
+                # Race progress in laps; the leaderboard sorts on this.
+                "progress": round(car["progress"], 6),
                 "tyre": car["tyre"],
                 "tyre_life": car["tyre_life"],
                 "position": position,

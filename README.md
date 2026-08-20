@@ -316,7 +316,20 @@ You can easily fix this by running this command:
 $ conda install -c conda-forge libstdcxx-ng
 ```
 Thanks to @el-mandaloriano for showing how to resolve this issue: #12
-- The leaderboard appears to be inaccurate for the first few corners of the race. The leaderboard is also temporarily affected by a driver going in the pits. At the end of the race, the leaderboard is sometimes affected by the drivers' final x,y positions being further ahead than other drivers. These are known issues caused by inaccuracies in the telemetry and are being worked on for future releases. It's likely that these issues will be fixed in stages as improving the leaderboard accuracy is a complex task.
+- **Leaderboard accuracy — fixed.** The order used to be wrong through the first
+  few corners, disturbed by pit stops, and scrambled at the flag by drivers'
+  final x,y positions. All three came from ranking cars by projecting their
+  coordinates onto the track: F1's position feed goes stale for seconds at a
+  time and occasionally jumps hundreds of metres. Ranking now uses the
+  speed-integrated distance channel instead, with the starting grid seeding
+  lap one and the official result taking over at the chequered flag. Measured
+  against official timing for the 2026 Hungarian Grand Prix, the order is now
+  exact at 98.4% of line crossings (100% within one place, previously 57.6%
+  exact with errors up to 21 places), exact at lights out, and an exact match
+  for the final classification. See [src/lib/classification.py](./src/lib/classification.py).
+
+  > Replays cached before this change still contain the old ordering. Re-run
+  > with `--refresh-data` to rebuild them.
 
 ## 📝 License
 

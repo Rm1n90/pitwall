@@ -14,7 +14,7 @@ SESSION_START = datetime(2026, 7, 26, 13, 0, tzinfo=timezone.utc)
 
 # Every key the offline pipeline puts on a driver in a frame.
 REPLAY_DRIVER_KEYS = {
-    "x", "y", "dist", "lap", "rel_dist", "tyre", "tyre_life",
+    "x", "y", "dist", "lap", "rel_dist", "progress", "tyre", "tyre_life",
     "position", "speed", "gear", "drs", "throttle", "brake", "in_pit",
 }
 

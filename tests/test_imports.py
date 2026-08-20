@@ -21,6 +21,7 @@ MODULES = [
     "src.interfaces.qualifying",
     "src.interfaces.race_replay",
     "src.interfaces.live_mode",
+    "src.lib.classification",
     "src.lib.season",
     "src.lib.settings",
     "src.lib.time",
