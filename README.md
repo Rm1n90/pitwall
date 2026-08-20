@@ -265,6 +265,7 @@ show 0.0% frozen frames, and none of this engages on them. See
 | [telemetry.md](./telemetry.md) | The telemetry stream and its frame format |
 | [docs/PitWallWindow.md](./docs/PitWallWindow.md) | Building your own insight window on the telemetry stream |
 | [docs/InsightsMenu.md](./docs/InsightsMenu.md) | Adding an entry to the insights menu |
+| [docs/DataSources.md](./docs/DataSources.md) | Every feed F1 publishes, what we read, and what each unused one offers |
 | [docs/Testing.md](./docs/Testing.md) | Running the test suite |
 | [roadmap.md](./roadmap.md) | Where the project is heading |
 
