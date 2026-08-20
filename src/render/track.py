@@ -109,6 +109,7 @@ class TrackRenderer:
                  corners: Optional[Sequence] = None,
                  pit_lane: Optional[Sequence] = None,
                  drs_zones: Optional[Sequence] = None,
+                 marshal_sectors: Optional[Sequence] = None,
                  resolution: int = 900):
         import numpy as np
 
@@ -128,9 +129,41 @@ class TrackRenderer:
         threshold = float(np.percentile(curvature, CORNER_PERCENTILE))
         self.is_corner = curvature > max(threshold, 1e-9)
 
+        # Where each marshalling sector begins along the reference line, so a
+        # flag can light up the stretch it actually applies to.
+        self._sector_starts = self._index_marshal_sectors(marshal_sectors)
+
         self._shapes = None
         self._corner_labels: List[arcade.Text] = []
         self._pit_label: Optional[arcade.Text] = None
+
+    def _index_marshal_sectors(self, sectors) -> dict:
+        """Map each marshalling sector number to an index on the centre line."""
+        import numpy as np
+
+        if not sectors:
+            return {}
+        points = np.column_stack((self.centre_x, self.centre_y))
+        indexed = {}
+        for number, x, y in sectors:
+            distances = np.hypot(points[:, 0] - x, points[:, 1] - y)
+            indexed[int(number)] = int(np.argmin(distances))
+        return indexed
+
+    def sector_span(self, number: int):
+        """Return the ``(start, stop)`` line indices a sector covers.
+
+        A sector runs from its own marker to the next one round the lap.
+        Returns ``None`` when the circuit's sectors are unknown.
+        """
+        if not self._sector_starts:
+            return None
+        start = self._sector_starts.get(int(number))
+        if start is None:
+            return None
+        later = sorted(v for v in self._sector_starts.values() if v > start)
+        stop = later[0] if later else len(self.centre_x) - 1
+        return start, stop
 
     # -- building ---------------------------------------------------------
 
@@ -257,11 +290,22 @@ class TrackRenderer:
     # -- drawing ----------------------------------------------------------
 
     def draw(self, to_screen, show_drs: bool = True,
-             status_color: Optional[Tuple[int, int, int]] = None) -> None:
-        """Draw the circuit. ``rebuild`` must have been called first."""
+             status_color: Optional[Tuple[int, int, int]] = None,
+             flagged_sectors: Optional[Sequence] = None) -> None:
+        """Draw the circuit. ``rebuild`` must have been called first.
+
+        Args:
+            to_screen: World to screen mapping.
+            show_drs: Whether to mark the DRS zones.
+            status_color: Tint for the track edges when not under green flags.
+            flagged_sectors: ``(sector_number, colour)`` pairs to light up.
+        """
         if self._shapes is None:
             return
         self._shapes.draw()
+
+        if flagged_sectors:
+            self._draw_flagged(to_screen, flagged_sectors)
 
         if show_drs:
             self._draw_drs(to_screen)
@@ -283,6 +327,20 @@ class TrackRenderer:
                       for i in range(start, min(stop, len(self.centre_x)))]
             if len(points) > 1:
                 arcade.draw_line_strip(points, DRS_COLOR, 2.0)
+
+    def _draw_flagged(self, to_screen, flagged) -> None:
+        """Light up the stretches of track under a flag."""
+        for number, color in flagged:
+            span = self.sector_span(number)
+            if span is None:
+                continue
+            start, stop = span
+            for xs, ys in ((self.inner_x, self.inner_y),
+                           (self.outer_x, self.outer_y)):
+                points = [to_screen(xs[i], ys[i])
+                          for i in range(start, min(stop + 1, len(xs)))]
+                if len(points) > 1:
+                    arcade.draw_line_strip(points, color, 5.0)
 
     def _draw_status_edge(self, to_screen, color) -> None:
         """Tint the track edges when the session is not under green flags."""

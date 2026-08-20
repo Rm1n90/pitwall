@@ -37,7 +37,6 @@ set the countdown has to be continued from `Utc` rather than read off
 |------|-----------------|-----------------------|
 | **TimingStats** | Personal best lap, best sector times with field position, best speeds at each trap | A proper timing tower: purple/green sector colouring, speed trap rankings |
 | **TyreStintSeries** | Every stint for every driver with compound, age and whether the set was new | A full strategy chart without deriving it from lap data |
-| **OvertakeSeries** | Timestamped overtake counts per driver | Overtake markers on the progress bar, an "on the move" indicator |
 | **ChampionshipPrediction** | Live projected championship positions for drivers and teams | "If the race ended now" standings |
 | **TeamRadio** | Timestamped MP3 clips per driver | Radio messages on the timeline, playable |
 | **CurrentTyres** | Current compound and whether new | Simpler and more direct than deriving from `TimingAppData` |
@@ -80,6 +79,14 @@ overall best, across a full qualifying session (5,774 samples).
 
 An overall-best sector contains a mix of `2051` and `2049` because individual
 segments within it can be personal rather than overall bests.
+
+## Investigated and not used
+
+**OvertakeSeries** carries 516 timestamped entries for a race, each with a
+`count`. The counts are mostly `1` with occasional `21`s, are not monotonic
+per driver, and do not add up to anything that matches the position data, so
+what they represent is unclear. Places gained comes from the position history
+instead, which is unambiguous and already verified.
 
 ## Other APIs
 

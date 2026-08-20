@@ -23,6 +23,7 @@ MODULES = [
     "src.interfaces.race_replay",
     "src.interfaces.live_mode",
     "src.lib.classification",
+    "src.lib.flag_sectors",
     "src.lib.lap_history",
     "src.lib.pit_lane",
     "src.lib.pit_stops",

@@ -16,6 +16,12 @@ from src.ui_components import (
     build_track_from_example_lap,
     draw_finish_line
 )
+from src.lib.flag_sectors import (
+    FLAG_COLORS,
+    active_flags,
+    build_sector_flags,
+    marshal_sectors_from_circuit_info,
+)
 from src.lib.lap_history import LapHistory
 from src.render.cars import draw_car, draw_label, draw_safety_car
 from src.render.timing_tower import TimingTower
@@ -189,6 +195,9 @@ class F1RaceReplayWindow(arcade.Window):
         self.is_forwarding = False
         self.was_paused_before_hold = False
         
+        # Periods each marshalling sector spent under a flag
+        self._sector_flags = build_sector_flags(self.race_control_messages)
+
         # Extract race events for the progress bar
         race_events = extract_race_events(frames, track_statuses, total_laps or 0)
         self.progress_bar_comp.set_race_data(
@@ -252,6 +261,8 @@ class F1RaceReplayWindow(arcade.Window):
                 if circuit_info is not None else [],
                 pit_lane=pit_lane or [],
                 drs_zones=drs_ranges,
+                marshal_sectors=marshal_sectors_from_circuit_info(circuit_info)
+                if circuit_info is not None else [],
             )
         except Exception as e:
             print(f"Falling back to the simple track outline: {e}")
@@ -1440,11 +1451,22 @@ class F1RaceReplayWindow(arcade.Window):
             
         if self.track_renderer is not None:
             # Only tint the edges when the session is not under green flags.
+            flagged = [
+                (entry["sector"], FLAG_COLORS.get(entry["flag"],
+                                                  FLAG_COLORS["YELLOW"]))
+                for entry in active_flags(self._sector_flags, current_time)
+            ]
+            # A local yellow applies to one stretch of track, so light only
+            # that stretch rather than tinting the whole circuit. A safety
+            # car or red flag really does apply everywhere, so those still do.
+            local_only = flagged and current_track_status == "2"
+            tint = None if (current_track_status in ("1", "") or local_only) \
+                else track_color
             self.track_renderer.draw(
                 self.world_to_screen,
                 show_drs=self.toggle_drs_zones,
-                status_color=None if current_track_status in ("1", "")
-                else track_color,
+                status_color=tint,
+                flagged_sectors=flagged,
             )
         else:
             if len(self.screen_inner_points) > 1:
