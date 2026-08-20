@@ -85,6 +85,16 @@ class F1RaceReplayWindow(arcade.Window):
         # Indexed so the tower can ask for lap times at any replay position.
         self._lap_history = LapHistory(self._precomputed_lap_times)
         self._precomputed_status_laps = self._compute_status_laps(frames, track_statuses)
+
+        # Lap-by-lap running order, for the position chart.
+        self._position_history = {}
+        if session is not None:
+            try:
+                from src.lib.position_history import from_session, to_payload
+
+                self._position_history = to_payload(from_session(session))
+            except Exception as e:
+                print(f"Position history unavailable: {e}")
         self.visible_hud = visible_hud # If it displays HUD or not (leaderboard, controls, weather, etc)
 
         # Rotation (degrees) to apply to the whole circuit around its centre
@@ -417,6 +427,7 @@ class F1RaceReplayWindow(arcade.Window):
         # opened after the race has finished still receive the data.
         payload["lap_times"] = self._precomputed_lap_times
         payload["status_laps"] = self._precomputed_status_laps
+        payload["position_history"] = self._position_history
 
         self.telemetry_stream.broadcast(payload)
 

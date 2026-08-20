@@ -132,6 +132,12 @@ class LiveModeController:
             tower = getattr(window, "leaderboard_comp", None)
             if stops and tower is not None:
                 tower.pit_times = stops
+
+            from src.lib.position_history import to_payload
+
+            history = self.engine.state.position_history
+            if history:
+                window._position_history = to_payload(history)
         except Exception as exc:
             print(f"[live] pit stop times unavailable: {exc}")
 

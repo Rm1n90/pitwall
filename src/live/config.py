@@ -81,7 +81,7 @@ class LiveConfig:
         "Heartbeat", "DriverList", "SessionInfo", "SessionStatus",
         "SessionData", "TrackStatus", "LapCount", "TimingData",
         "TimingAppData", "TimingStats", "WeatherData",
-        "RaceControlMessages", "ExtrapolatedClock",
+        "RaceControlMessages", "ExtrapolatedClock", "LapSeries",
         "Position.z", "CarData.z",
     ))
 

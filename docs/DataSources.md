@@ -19,7 +19,8 @@ Grand Prix feed rather than taken from documentation.
 
 `SessionInfo` · `SessionStatus` · `DriverList` · `TimingData` · `TimingAppData`
 · `WeatherData` · `LapCount` · `TrackStatus` · `RaceControlMessages` ·
-`Position.z` · `CarData.z` · `ExtrapolatedClock` · `PitStopSeries`
+`Position.z` · `CarData.z` · `ExtrapolatedClock` · `PitStopSeries` ·
+`LapSeries`
 
 `PitStopSeries` is not part of the SignalR subscription — subscribing to it
 returns nothing. It is only in the static archive, so a replay fetches it for
@@ -37,7 +38,6 @@ set the countdown has to be continued from `Utc` rather than read off
 | **TimingStats** | Personal best lap, best sector times with field position, best speeds at each trap | A proper timing tower: purple/green sector colouring, speed trap rankings |
 | **TyreStintSeries** | Every stint for every driver with compound, age and whether the set was new | A full strategy chart without deriving it from lap data |
 | **OvertakeSeries** | Timestamped overtake counts per driver | Overtake markers on the progress bar, an "on the move" indicator |
-| **LapSeries** | Each driver's position at the end of every lap | The classic position-change chart across the race |
 | **ChampionshipPrediction** | Live projected championship positions for drivers and teams | "If the race ended now" standings |
 | **TeamRadio** | Timestamped MP3 clips per driver | Radio messages on the timeline, playable |
 | **CurrentTyres** | Current compound and whether new | Simpler and more direct than deriving from `TimingAppData` |

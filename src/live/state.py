@@ -332,6 +332,8 @@ class LiveSessionState:
         self.pit_stops: Dict[str, list] = {}
         #: Time left in the session, as published by race control.
         self.extrapolated_clock: dict = {}
+        #: ``{code: [(lap, position), ...]}`` for the position chart.
+        self.position_history: Dict[str, list] = {}
         self.samples: Dict[str, DriverSamples] = {}
 
         #: UTC instant that frame time ``t = 0`` corresponds to.
@@ -494,6 +496,13 @@ class LiveSessionState:
             # The feed resends the whole series, so replacing is correct and
             # avoids accumulating duplicates.
             self.pit_stops[str(number)] = stops
+
+    def _apply_lap_series(self, message: LiveMessage) -> None:
+        from src.lib.position_history import from_lap_series, merge
+
+        update = from_lap_series(message.data, self.driver_code)
+        if update:
+            merge(self.position_history, update)
 
     def _apply_extrapolated_clock(self, message: LiveMessage) -> None:
         if isinstance(message.data, dict):
@@ -688,6 +697,7 @@ _HANDLERS = {
     "RaceControlMessages": LiveSessionState._apply_race_control,
     "PitStopSeries": LiveSessionState._apply_pit_stops,
     "ExtrapolatedClock": LiveSessionState._apply_extrapolated_clock,
+    "LapSeries": LiveSessionState._apply_lap_series,
     "Position": LiveSessionState._apply_position,
     "CarData": LiveSessionState._apply_car_data,
 }

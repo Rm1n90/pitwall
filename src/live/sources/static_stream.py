@@ -33,6 +33,7 @@ SUPPLEMENTARY_TOPICS = ("PitStopSeries",)
 # are still polled, because a red flag or a driver change must show up live.
 DEFAULT_STATIC_TOPICS = (
     "PitStopSeries",
+    "LapSeries",
     "ExtrapolatedClock",
     "SessionInfo",
     "DriverList",
@@ -51,6 +52,7 @@ DEFAULT_STATIC_TOPICS = (
 # startup so a mid-session join immediately has a full picture.
 KEYFRAME_TOPICS = (
     "PitStopSeries",
+    "LapSeries",
     "ExtrapolatedClock",
     "SessionInfo",
     "DriverList",
