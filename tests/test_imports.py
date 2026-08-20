@@ -23,6 +23,7 @@ MODULES = [
     "src.interfaces.live_mode",
     "src.lib.classification",
     "src.lib.season",
+    "src.lib.track_geometry",
     "src.lib.settings",
     "src.lib.time",
     "src.lib.tyres",

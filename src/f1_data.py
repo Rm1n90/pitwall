@@ -17,6 +17,7 @@ from src.lib.classification import (
     read_classification,
 )
 from src.lib.settings import get_settings
+from src.lib.track_geometry import TrackLine, rebuild_positions
 from src.lib.time import parse_time_string
 from src.lib.tyres import get_tyre_compound_int
 
@@ -570,6 +571,43 @@ def _reference_lap_length_m(session, default=5000.0):
     return default
 
 
+def _build_track_line(session):
+    """Return the circuit centreline, or ``None`` if it cannot be built."""
+    try:
+        fastest = session.laps.pick_fastest()
+        if fastest is None:
+            return None
+        telemetry = fastest.get_telemetry()
+        return TrackLine(telemetry["X"].to_numpy(float),
+                         telemetry["Y"].to_numpy(float))
+    except Exception as e:
+        print(f"Could not build the track line, skipping position repair: {e}")
+        return None
+
+
+def _repair_driver_positions(driver_data, track_line):
+    """Reconstruct positions across gaps in the position feed, in place.
+
+    F1's position feed sometimes repeats a car's coordinates for seconds at a
+    time, which makes it appear frozen on track and then teleport. Where that
+    happens the car is walked along the reference line at the speed it was
+    actually doing. On a healthy feed this changes nothing.
+    """
+    if track_line is None:
+        return 0
+
+    total = 0
+    for code, data in driver_data.items():
+        x, y, repaired = rebuild_positions(
+            data["t"], data["x"], data["y"], data["speed"], track_line
+        )
+        if repaired:
+            data["x"] = x
+            data["y"] = y
+            total += repaired
+    return total
+
+
 def _build_race_progress(resampled_data, classification, lap_length_m):
     """Return ``{code: array}`` of race progress in laps, per frame.
 
@@ -657,6 +695,13 @@ def get_race_telemetry(session, session_type="R"):
     # Ensure we have valid time bounds
     if global_t_min is None or global_t_max is None:
         raise ValueError("No valid telemetry data found for any driver")
+
+    # Repair gaps in the position feed before resampling, so a stalled feed
+    # does not freeze cars on track and then teleport them.
+    repaired = _repair_driver_positions(driver_data, _build_track_line(session))
+    if repaired:
+        print(f"Reconstructed {repaired} position samples "
+              f"across gaps in the position feed")
 
     # 2. Create a timeline (start from zero)
     timeline = np.arange(global_t_min, global_t_max, DT) - global_t_min

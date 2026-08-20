@@ -331,6 +331,18 @@ Thanks to @el-mandaloriano for showing how to resolve this issue: #12
   > Replays cached before this change still contain the old ordering. Re-run
   > with `--refresh-data` to rebuild them.
 
+- **Cars freezing on track — improved, not solved.** F1's position feed is
+  normally healthy, updating each car about four times a second. Occasionally
+  a session's feed degrades badly: in the 2026 Hungarian Grand Prix it repeats
+  the same coordinates for two to three seconds at a time and then jumps a
+  couple of hundred metres, so cars appear to freeze and teleport. Where that
+  happens, cars are now walked along the reference line at the speed they were
+  actually doing, which cut frozen frames from 55% to 44% in that race without
+  making the motion any jumpier. It cannot be fully solved on the client: the
+  coordinates were simply never transmitted. Surveying other sessions, this is
+  rare — the 2026 Belgian, 2025 Hungarian and 2024 Italian races all show 0.0%
+  frozen frames, and the repair is a no-op on them.
+
 ## 📝 License
 
 MIT — see [LICENSE](./LICENSE).
