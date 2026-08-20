@@ -169,6 +169,14 @@ def main(year=None, round_number=None, playback_speed=1, session_type='R', visib
     except Exception as e:
         print(f"Team radio unavailable: {e}")
 
+    # Driver portraits, fetched once and kept on disk
+    portraits = {}
+    try:
+        from src.lib.driver_images import fetch_for_session as fetch_portraits
+        portraits = fetch_portraits(session)
+    except Exception as e:
+        print(f"Driver portraits unavailable: {e}")
+
     pit_lane = None
     try:
         from src.lib.pit_lane import get_pit_lane
@@ -216,7 +224,8 @@ def main(year=None, round_number=None, playback_speed=1, session_type='R', visib
       circuit_info=circuit_info,
       pit_lane=pit_lane,
       pit_stop_times=pit_stop_times,
-      team_radio=team_radio
+      team_radio=team_radio,
+      portraits=portraits
     )
 
 if __name__ == "__main__":

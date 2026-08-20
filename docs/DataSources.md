@@ -55,9 +55,6 @@ These arrive in every session and cost nothing extra.
 | Field | Where | What it would give us |
 |-------|-------|-----------------------|
 | **Mini-sector segments** | `TimingData.Lines[car].Sectors[].Segments[].Status` | The circuit split into 22 timed segments (7 + 9 + 6 at the Hungaroring), each with a status per driver. Colouring the *map* by segment additionally needs a mapping from segment index to track position, which nothing publishes; the same information is used in the timing tower instead. |
-| **Speed traps** | `TimingData.Lines[car].Speeds` | `I1`, `I2`, `FL`, `ST` speeds with personal and overall best flags |
-| **Sector times** | `TimingData.Lines[car].Sectors[].Value` | Live sector times with best-of-session flags |
-| **Headshots and country** | `DriverList[car].HeadshotUrl`, `CountryCode` | Driver portraits and flags in the leaderboard |
 | **Corner positions** | FastF1 `session.get_circuit_info().corners` | 16 corners with coordinates, numbers and letters — corner labels on the map |
 | **Marshal sectors** | FastF1 `get_circuit_info().marshal_sectors` | 19 marshal sectors with coordinates. Combined with the sector referenced in a yellow-flag race control message, we could highlight *exactly* the stretch of track that is under a flag. |
 | **Elevation** | `Z` in the position feed | Circuits are not flat. Z is already decoded and thrown away. |

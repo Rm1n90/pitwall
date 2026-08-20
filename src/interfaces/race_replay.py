@@ -23,6 +23,7 @@ from src.lib.flag_sectors import (
     marshal_sectors_from_circuit_info,
 )
 from src.lib.lap_history import LapHistory
+from src.lib.speed_traps import from_lap_times as speed_traps_from_lap_times
 from src.render.cars import draw_car, draw_label, draw_safety_car
 from src.render.timing_tower import TimingTower
 from src.render.track import TrackRenderer, corner_labels_from_circuit_info
@@ -47,7 +48,7 @@ class F1RaceReplayWindow(arcade.Window):
                  session_info=None, session=None, enable_telemetry=False,
                  race_control_messages=None, live_engine=None,
                  circuit_info=None, pit_lane=None, pit_stop_times=None,
-                 team_radio=None):
+                 team_radio=None, portraits=None):
         # Set resizable to True so the user can adjust mid-sim
         super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, title, resizable=True)
         self.maximize()
@@ -91,6 +92,8 @@ class F1RaceReplayWindow(arcade.Window):
         self._precomputed_lap_times = self._compute_lap_times(frames, session)
         # Indexed so the tower can ask for lap times at any replay position.
         self._lap_history = LapHistory(self._precomputed_lap_times)
+        self._speed_traps = speed_traps_from_lap_times(
+            self._precomputed_lap_times)
         self._precomputed_status_laps = self._compute_status_laps(frames, track_statuses)
 
         # Lap-by-lap running order, for the position chart.
@@ -122,6 +125,7 @@ class F1RaceReplayWindow(arcade.Window):
         self.weather_comp = WeatherComponent(left=20, top_offset=170, visible=visible_hud)
         self.legend_comp = LegendComponent(x=max(12, self.left_ui_margin - 320), visible=visible_hud)
         self.driver_info_comp = DriverInfoComponent(left=20, width=300)
+        self.driver_info_comp.portraits = portraits or {}
         self.controls_popup_comp = ControlsPopupComponent()
 
         self.controls_popup_comp.set_size(340, 250) # width/height of the popup box
@@ -306,6 +310,13 @@ class F1RaceReplayWindow(arcade.Window):
         self._screenshot_at = float(os.environ.get("PITWALL_SCREENSHOT_AFTER", 4))
         self._screenshot_taken = False
         self._opened_at = time.time()
+        chosen = os.environ.get("PITWALL_SELECT")
+        if chosen:
+            self.selected_drivers = [c.strip() for c in chosen.split(",")
+                                     if c.strip()]
+            self.selected_driver = self.selected_drivers[-1] \
+                if self.selected_drivers else None
+
         seek = os.environ.get("PITWALL_SEEK")
         if seek:
             try:
@@ -508,6 +519,14 @@ class F1RaceReplayWindow(arcade.Window):
                         value = row.get(f"Sector{number}Time")
                         sectors[f"sector{number}_s"] = (
                             value.total_seconds() if pd.notna(value) else None
+                        )
+
+                    # Speeds at the four measuring points on the lap.
+                    for trap, column in (("i1", "SpeedI1"), ("i2", "SpeedI2"),
+                                         ("fl", "SpeedFL"), ("st", "SpeedST")):
+                        speed = row.get(column)
+                        sectors[f"speed_{trap}"] = (
+                            float(speed) if pd.notna(speed) else None
                         )
 
                     result.setdefault(code, []).append({

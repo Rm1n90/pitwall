@@ -480,6 +480,9 @@ class DriverInfoComponent(BaseComponent):
         self.width = width
         self.min_top = min_top
         self.degradation_integrator = None
+        #: ``{code: local image path}`` for driver portraits.
+        self.portraits = {}
+        self._portrait_textures = {}
 
     def draw(self, window):
         # Support multiple selection via window.selected_drivers
@@ -495,7 +498,8 @@ class DriverInfoComponent(BaseComponent):
         idx = min(int(window.frame_index), window.n_frames - 1)
         frame = window.frames[idx]
 
-        box_width, box_height, gap = self.width, 210, 10
+        # Tall enough for the speed trap row along the bottom.
+        box_width, box_height, gap = self.width, 244, 10
         weather_bottom = getattr(window, "weather_bottom", None)
         current_top = weather_bottom - 20 if weather_bottom else window.height - 200
 
@@ -508,6 +512,61 @@ class DriverInfoComponent(BaseComponent):
             self._draw_info_box(window, code, driver_pos, center_y, box_width, box_height)
             current_top -= (box_height + gap)
 
+    def _portrait_texture(self, code):
+        """Load a driver's portrait once and keep it."""
+        if code in self._portrait_textures:
+            return self._portrait_textures[code]
+        path = self.portraits.get(code)
+        texture = None
+        if path:
+            try:
+                texture = arcade.load_texture(path)
+            except Exception as e:
+                print(f"Could not load the portrait for {code}: {e}")
+        self._portrait_textures[code] = texture
+        return texture
+
+    def _draw_portrait(self, code, right, top):
+        """Draw the driver's face in the corner of their panel."""
+        texture = self._portrait_texture(code)
+        if texture is None:
+            return
+        size = 46
+        rect = arcade.XYWH(right - size / 2 - 6, top - size / 2 - 6,
+                           size, size)
+        arcade.draw_texture_rect(rect=rect, texture=texture)
+
+    def _draw_speed_traps(self, window, code, left, bottom):
+        """Show the driver's best speed at each measuring point."""
+        traps = getattr(window, "_speed_traps", None)
+        if traps is None:
+            return
+        idx = min(int(window.frame_index), max(0, window.n_frames - 1))
+        try:
+            now = window.frames[idx]["t"]
+        except Exception:
+            return
+
+        readings = traps.snapshot(code, now)
+        if not readings:
+            return
+
+        from src.lib.speed_traps import TRAP_KEYS, TRAP_LABELS
+
+        x = left + 10
+        y = bottom + 14
+        for trap in TRAP_KEYS:
+            reading = readings.get(trap)
+            if reading is None:
+                continue
+            colour = (176, 84, 236) if reading.is_session_best \
+                else arcade.color.LIGHT_GRAY
+            arcade.draw_text(TRAP_LABELS[trap], x, y + 10, (140, 146, 160), 7,
+                             anchor_x="left", anchor_y="center")
+            arcade.draw_text(f"{reading.speed:.0f}", x, y, colour, 10,
+                             anchor_x="left", anchor_y="center", bold=True)
+            x += 48
+
     def _draw_info_box(self, window, code, driver_pos, center_y, box_width, box_height):
         center_x = self.left + box_width / 2
         top, bottom = center_y + box_height / 2, center_y - box_height / 2
@@ -515,6 +574,8 @@ class DriverInfoComponent(BaseComponent):
 
         rect = arcade.XYWH(center_x, center_y, box_width, box_height)
         arcade.draw_rect_filled(rect, (0, 0, 0, 200))
+        self._draw_portrait(code, right, top)
+        self._draw_speed_traps(window, code, left, bottom)
 
         team_color = window.driver_colors.get(code, arcade.color.GRAY)
         arcade.draw_rect_outline(rect, team_color, 2)
