@@ -18,8 +18,6 @@ interface.
   weather, safety car and driver telemetry. Practice is ranked on best lap
   rather than track position, since it has no grid and no finishing order.
 - **Telemetry stream** so custom dashboards can run alongside the replay.
-- **A three-dimensional circuit** built from the elevation the position feed
-  carries, with orbit, chase and tracking cameras.
 
 ## Next
 

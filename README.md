@@ -23,7 +23,6 @@ python main.py            # pick any past session from the GUI
 ## Features
 
 - **Live Sessions:** Follow a race, sprint, qualifying or practice session in real time, rewind into what you missed, and jump back to live with **G**.
-- **3D Circuit:** Press **V** to stand the circuit up. The hills are the real ones: every position sample carries an altitude the app now reads, so the Hungaroring's 35 m of elevation is on screen rather than implied. Kerbs mark the corners, the cars are models rather than dots, and **C** cycles a free orbit, a chase camera behind your driver and a tracking camera that lets the car come to it. Drag to turn, scroll to zoom, **R** to frame the circuit again.
 - **Circuit View:** The track drawn as a racing surface with kerbs on the corners, numbered corners, a runoff apron and the pit lane traced from telemetry. Cars carry their team colour, a tyre-compound ring, a DRS glow and a leader marker.
 - **Timing Tower:** Running order with gaps, places gained or lost against the grid, tyre compound and age, pit stop count and the real stationary time in the box, and last lap time coloured purple for the session best and green for a personal best.
 - **Driver Detail:** Selecting a car shows its portrait, live telemetry, gaps to the cars either side, tyre condition, and its best speed at each of the four measuring points on the lap, purple where it leads the session.
@@ -87,8 +86,7 @@ Full details, latency tuning, data sources and troubleshooting are in
 - **Toggle Progress Bar**: **B** to hide/show progress bar
 - **Toggle Driver Names**: **L** to hide/show driver names on track
 - **Select driver/drivers**: Click a car on track or a row in the timing tower; shift-click to select several
-- **3D circuit**: **V** to switch between the flat and the three-dimensional view
-- **Camera (3D)**: **C** cycles free orbit, chase and tracking; drag to turn, scroll to zoom, **R** to frame the circuit again
+
 
 
 ## Safety Car

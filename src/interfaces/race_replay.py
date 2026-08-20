@@ -27,9 +27,6 @@ from src.lib.speed_traps import from_lap_times as speed_traps_from_lap_times
 from src.render.cars import (
     draw_car, draw_label, draw_safety_car, driver_at,
 )
-#: What sits above the horizon in the three-dimensional view.
-SKY_COLOUR = (12, 13, 18, 255)
-
 from src.render import theme
 from src.lib import gap_history
 from src.lib.practice import is_practice, practice_label
@@ -94,14 +91,6 @@ class F1RaceReplayWindow(arcade.Window):
         self.paused = False
         self.total_laps = total_laps
         self.session_type = session_type
-        # The three-dimensional view is built the first time it is asked
-        # for, because it needs the session's elevation data and a graphics
-        # context, and most of a session is watched from above.
-        self.view_3d = False
-        self._scene_3d = None
-        self._camera_3d = None
-        self._orbiting = False
-        self.camera_mode = "free"
         # Practice is ranked on lap times, so the tower shows different
         # columns and there is no grid to have gained places against.
         self.practice_mode = is_practice(session_type)
@@ -200,8 +189,6 @@ class F1RaceReplayWindow(arcade.Window):
         # Session info banner component
         self.session_info_comp = SessionInfoComponent(visible=visible_hud)
         self.session_info = session_info or {}
-        # Kept for the 3D view, which reads the circuit's elevation from it.
-        self.session = session
         self.circuit_length_m = session_info.get('circuit_length_m') if session_info else None
         self.season_year = session_info.get('year') if session_info else None
         if session_info:
@@ -351,13 +338,6 @@ class F1RaceReplayWindow(arcade.Window):
                                      if c.strip()]
             self.selected_driver = self.selected_drivers[-1] \
                 if self.selected_drivers else None
-
-        if os.environ.get("PITWALL_3D"):
-            self.view_3d = True
-            self._setup_3d()
-            mode = os.environ.get("PITWALL_CAMERA")
-            if mode:
-                self.camera_mode = mode
 
         seek = os.environ.get("PITWALL_SEEK")
         if seek:
@@ -1491,23 +1471,6 @@ class F1RaceReplayWindow(arcade.Window):
         self.status_text.y = self.height - 120
 
     def world_to_screen(self, x, y):
-        """Where a point on the circuit lands on screen.
-
-        Everything that puts something over the track goes through here:
-        driver labels, the click test, the track outline. In the
-        three-dimensional view that means projecting through the camera, so
-        all of them follow the view without knowing about it.
-        """
-        if self.view_3d and self._scene_3d is not None:
-            position, _heading = self._scene_3d.surface.place([x], [y])
-            screen, _depth, visible = self._camera_3d.project(
-                position, self.width, self.height)
-            if not visible[0]:
-                # Behind the camera: park it off screen rather than
-                # returning a mirrored position.
-                return -10000.0, -10000.0
-            return float(screen[0][0]), float(screen[0][1])
-
         # Rotate around the track centre (if rotation is set), then scale+translate
         world_cx = (self.x_min + self.x_max) / 2
         world_cy = (self.y_min + self.y_max) / 2
@@ -1534,143 +1497,8 @@ class F1RaceReplayWindow(arcade.Window):
         idx = int((deg_norm / 22.5) + 0.5) % len(dirs)
         return dirs[idx]
 
-    def _setup_3d(self) -> bool:
-        """Build the three-dimensional scene, once. Returns whether it worked."""
-        if self._scene_3d is not None:
-            return True
-        if getattr(self, "plot_x_ref", None) is None:
-            return False
-
-        try:
-            from src.lib.elevation import build_profile
-            from src.render.scene3d.camera import Camera3D
-            from src.render.scene3d.renderer import Scene3D
-
-            x = np.asarray(self.plot_x_ref, dtype=float)
-            y = np.asarray(self.plot_y_ref, dtype=float)
-
-            event = (self.session_info or {}).get("event_name", "circuit")
-            year = (self.session_info or {}).get("year", "")
-            elevation = np.zeros(len(x))
-            if self.session is not None:
-                elevation = build_profile(self.session, x, y,
-                                          event_key=f"{event}_{year}")
-
-            scene = Scene3D(self.ctx)
-            scene.set_track(x, y, elevation)
-
-            camera = Camera3D(target=scene.surface.centre_world(),
-                              yaw=0.7, pitch=np.deg2rad(34.0))
-            camera.fit(scene.surface.radius_world(),
-                       self.width / max(self.height, 1))
-            camera.frame_points(
-                scene.surface.place(scene.surface.x, scene.surface.y)[0],
-                self.width, self.height, fill=self._usable_fraction())
-
-            self._scene_3d = scene
-            self._camera_3d = camera
-            print(f"3D view ready: {len(scene.surface.x)} track points, "
-                  f"elevation {elevation.max() - elevation.min():.1f} m")
-            return True
-        except Exception as exc:
-            print(f"The 3D view is unavailable: {exc}")
-            self.view_3d = False
-            return False
-
-    def _usable_fraction(self):
-        """How much of the window the panels leave free, on each axis."""
-        usable_width = self.width - self.left_ui_margin - self.right_ui_margin
-        usable_height = self.height - TOP_UI_MARGIN - BOTTOM_UI_MARGIN
-        return (max(usable_width, 200) / max(self.width, 1),
-                max(usable_height, 200) / max(self.height, 1))
-
-    def _follow_target(self, frame):
-        """The car the camera should be following, if any."""
-        codes = getattr(self, "selected_drivers", None) or []
-        if not codes and getattr(self, "selected_driver", None):
-            codes = [self.selected_driver]
-        if not codes:
-            # Nobody chosen: follow the leader, as a broadcast would.
-            codes = [code for code, car in frame["drivers"].items()
-                     if car.get("position") == 1]
-        for code in codes:
-            car = frame["drivers"].get(code)
-            if car and not car.get("retired") \
-                    and car.get("x") is not None:
-                return car
-        return None
-
-    def _follow_with_camera(self, frame) -> None:
-        """Move the camera to follow a car, in the mode that is set."""
-        from src.render.scene3d.camera import (
-            CHASE_DISTANCE_M, CHASE_PITCH, MODE_CHASE, MODE_TRACK,
-            TRACK_DISTANCE_M, TRACK_PITCH, smooth_angle_towards,
-            smooth_towards,
-        )
-
-        if self.camera_mode not in (MODE_CHASE, MODE_TRACK):
-            return
-        car = self._follow_target(frame)
-        if car is None:
-            return
-
-        surface = self._scene_3d.surface
-        position, heading = surface.place([car["x"]], [car["y"]])
-        camera = self._camera_3d
-
-        camera.look_at(smooth_towards(camera.target, position[0]))
-        if self.camera_mode == MODE_CHASE:
-            camera.yaw = smooth_angle_towards(camera.yaw, float(heading[0]))
-            camera.pitch = CHASE_PITCH
-            camera.distance = CHASE_DISTANCE_M
-        else:
-            # A tracking shot keeps its own angle and lets the car come to
-            # it, so the viewer keeps their bearings.
-            camera.pitch = TRACK_PITCH
-            camera.distance = TRACK_DISTANCE_M
-
-    def _draw_scene_3d(self, frame) -> None:
-        """Draw the circuit and the field in three dimensions."""
-        scene, camera = self._scene_3d, self._camera_3d
-        surface = scene.surface
-        self._follow_with_camera(frame)
-
-        codes, xs, ys, colours = [], [], [], []
-        for code, car in frame["drivers"].items():
-            if car.get("retired"):
-                continue
-            x, y = car.get("x"), car.get("y")
-            if x is None or y is None:
-                continue
-            codes.append(code)
-            xs.append(float(x))
-            ys.append(float(y))
-            colour = self.driver_colors.get(code, (200, 200, 200))
-            colours.append([channel / 255.0 for channel in colour[:3]])
-
-        from src.render.scene3d.renderer import car_scale_for_distance
-
-        scene.car_scale = car_scale_for_distance(camera.distance)
-        if codes:
-            positions, headings = surface.place(xs, ys)
-            scene.set_cars(positions, headings, colours)
-        else:
-            scene.set_cars(np.zeros((0, 3)), np.zeros(0), np.zeros((0, 3)))
-
-        self.ctx.enable(self.ctx.DEPTH_TEST)
-        try:
-            scene.draw(camera, self.width, self.height)
-        finally:
-            self.ctx.disable(self.ctx.DEPTH_TEST)
-
     def on_draw(self):
         self.clear()
-        if self.view_3d and self._scene_3d is not None:
-            # 2D drawing does not use the depth buffer, so it has to be
-            # cleared here or the scene builds up frame on frame. The colour
-            # goes with it: above the horizon there is no ground to draw, and
-            # the window's own background is not a sky.
-            self.ctx.screen.clear(color=SKY_COLOUR, depth=1.0)
 
         # 1. Draw Background (stretched to fit new window size)
         if self.bg_texture:
@@ -1713,10 +1541,7 @@ class F1RaceReplayWindow(arcade.Window):
         elif current_track_status == "6" or current_track_status == "7":
             track_color = STATUS_COLORS.get("VSC")
             
-        drawing_3d = self.view_3d and self._scene_3d is not None
-        if drawing_3d:
-            self._draw_scene_3d(frame)
-        elif self.track_renderer is not None:
+        if self.track_renderer is not None:
             # Only tint the edges when the session is not under green flags.
             flagged = [
                 (entry["sector"], FLAG_COLORS.get(entry["flag"],
@@ -1741,8 +1566,7 @@ class F1RaceReplayWindow(arcade.Window):
             if len(self.screen_outer_points) > 1:
                 arcade.draw_line_strip(self.screen_outer_points, track_color, 4)
 
-        if not drawing_3d:
-            draw_finish_line(self)
+        draw_finish_line(self)
         # 3. Draw Cars
         frame = self.frames[idx]
 
@@ -1774,13 +1598,11 @@ class F1RaceReplayWindow(arcade.Window):
                 draw_label(screen_x, screen_y, code, color, (nx, ny),
                            distance=34.0 if order % 2 == 0 else 58.0)
 
-            if not drawing_3d:
-                draw_car(screen_x, screen_y, color, car,
-                         is_leader=(code == leader_code),
-                         is_selected=is_selected)
+            draw_car(screen_x, screen_y, color, car,
+                     is_leader=(code == leader_code), is_selected=is_selected)
 
         # 3b. Draw Safety Car (if active)
-        sc_data = None if drawing_3d else frame.get("safety_car")
+        sc_data = frame.get("safety_car")
         if sc_data is not None:
             sc_x, sc_y = self.world_to_screen(sc_data["x"], sc_data["y"])
             draw_safety_car(sc_x, sc_y,
@@ -2021,20 +1843,6 @@ class F1RaceReplayWindow(arcade.Window):
             return
         if self.live is not None and self.live.on_key_press(symbol):
             return
-        if symbol == arcade.key.V:
-            self.toggle_3d()
-            return
-        if self.view_3d and symbol == arcade.key.C:
-            from src.render.scene3d.camera import next_mode
-
-            self.camera_mode = next_mode(self.camera_mode)
-            if self.camera_mode == "free":
-                self.reset_3d_camera()
-            print(f"Camera: {self.camera_mode}")
-            return
-        if self.view_3d and symbol == arcade.key.R:
-            self.reset_3d_camera()
-            return
         if symbol == arcade.key.SPACE:
             self.paused = not self.paused
             self._broadcast_telemetry_state()
@@ -2116,52 +1924,7 @@ class F1RaceReplayWindow(arcade.Window):
             self.is_rewinding = False
             self.paused = self.was_paused_before_hold
 
-    def toggle_3d(self) -> bool:
-        """Switch between looking at the circuit from above and from beside it."""
-        if not self.view_3d:
-            self.view_3d = True
-            if not self._setup_3d():
-                return False
-        else:
-            self.view_3d = False
-        print(f"3D view {'on' if self.view_3d else 'off'}")
-        return self.view_3d
-
-    def reset_3d_camera(self) -> None:
-        """Frame the whole circuit again after wandering off."""
-        if self._camera_3d is None or self._scene_3d is None:
-            return
-        surface = self._scene_3d.surface
-        self.camera_mode = "free"
-        self._camera_3d.look_at(surface.centre_world())
-        self._camera_3d.yaw = 0.7
-        self._camera_3d.pitch = np.deg2rad(34.0)
-        self._camera_3d.fit(surface.radius_world(),
-                            self.width / max(self.height, 1))
-        self._camera_3d.frame_points(
-            surface.place(surface.x, surface.y)[0], self.width, self.height,
-            fill=self._usable_fraction())
-
-    def on_mouse_drag(self, x: float, y: float, dx: float, dy: float,
-                      buttons: int, modifiers: int):
-        """Dragging swings the camera around the circuit."""
-        if not (self.view_3d and self._camera_3d is not None):
-            return
-        if not self._orbiting:
-            return
-        # Dragging right turns the circuit to the right, which means moving
-        # the camera the other way.
-        self._camera_3d.orbit(-dx * 0.006, dy * 0.005)
-
-    def on_mouse_scroll(self, x: float, y: float, scroll_x: float,
-                        scroll_y: float):
-        """The wheel moves the camera closer to the circuit or further away."""
-        if not (self.view_3d and self._camera_3d is not None):
-            return
-        self._camera_3d.zoom(0.90 ** float(scroll_y))
-
     def on_mouse_release(self, x: float, y: float, button: int, modifiers: int):
-        self._orbiting = False
         if self.is_forwarding or self.is_rewinding:
             self.is_forwarding = False
             self.is_rewinding = False
@@ -2190,9 +1953,7 @@ class F1RaceReplayWindow(arcade.Window):
                 self, code, multi=bool(modifiers & arcade.key.MOD_SHIFT))
             return
 
-        # Nothing under the pointer: in three dimensions that is a grab on
-        # the circuit itself, which swings the camera.
-        self._orbiting = self.view_3d
+        # Nothing under the pointer: clear the selection.
         self.selected_drivers = []
         self.selected_driver = None
         self.leaderboard_comp.selected = []
