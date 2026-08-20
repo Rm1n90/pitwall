@@ -6,8 +6,11 @@ A Python application for visualizing Formula 1 race telemetry and replaying race
 
 > **HUGE NEWS:** The telemetry stream feature is now in a usable state. See the [telemetry demo documentation](./telemetry.md) for access instructions, data format details, and usage ideas.
 
+> **NEW — Live Mode 🔴:** Watch a session *while it is happening*. Run `python main.py --live` (or click **WATCH LIVE** in the session picker) and the cars appear on track within a couple of seconds of the real thing — usually ahead of the TV broadcast. See [docs/LiveMode.md](./docs/LiveMode.md).
+
 ## Features
 
+- **Live Sessions:** Follow a race, sprint, qualifying or practice session in real time, rewind into what you missed, and jump back to live with **G**.
 - **Race Replay Visualization:** Watch the race unfold with real-time driver positions on a rendered track.
 - **Safety Car Visualization:** See the Safety Car deploy from pit lane, lead the field, and return to pits — with animated transitions and pulsing glow effects.
 - **Insights Menu:** Floating menu for quick access to telemetry analysis tools (launches automatically with replay).
@@ -18,8 +21,39 @@ A Python application for visualizing Formula 1 race telemetry and replaying race
 - **Legend:** On-screen legend explains all controls.
 - **Driver Telemetry Insights:** View speed, gear, DRS status, and current lap for selected drivers when selected on the leaderboard.
 
+## Live Mode
+
+```bash
+python main.py --live
+```
+
+Attaches to whatever session is running right now and plays it in the replay
+window with all the usual features: leaderboard, tyres, weather, safety car,
+telemetry stream and insight windows. Press **G** at any time to jump back to
+the live edge after rewinding.
+
+When nothing is on, the command tells you what is next:
+
+```
+No session is running right now. Next up: Dutch Grand Prix - Practice 1
+in 25h 48m (2026-08-21 10:30 UTC).
+```
+
+Want to try it outside a race weekend? The simulated source replays a past
+session through the same pipeline at real speed:
+
+```bash
+python main.py --live --live-source simulated \
+  --live-path "2026/2026-07-26_Hungarian_Grand_Prix/2026-07-26_Race/" \
+  --live-offset 4200
+```
+
+Full details, latency tuning, data sources and troubleshooting are in
+[docs/LiveMode.md](./docs/LiveMode.md).
+
 ## Controls
 
+- **Go Live (live mode only):** **G** to jump back to the newest data
 - **Pause/Resume:** SPACE or Pause button
 - **Rewind/Fast Forward:** ← / → or Rewind/Fast Forward buttons
 - **Playback Speed:** ↑ / ↓ or Speed button (cycles through 0.5x, 1x, 2x, 4x)

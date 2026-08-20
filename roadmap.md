@@ -6,6 +6,10 @@ Since launching this project, I've receieved a lot of feedback and feature reque
 
 I want this project to be the hands-down best way for data-loving F1 fans to explore the wide variety of data generated during a race weekend. This means providing a rich, interactive experience that allows users to review races, laps, and sessions in a way that is both informative and engaging. Imagine your very own personal pitwall where you can analyze every detail of the race weekend.
 
+## Delivered
+
+- **Live Sessions:** Watch a session in real time with `python main.py --live`. See [docs/LiveMode.md](./docs/LiveMode.md).
+
 ## Primary Goals
 
 - **GUI Menu System:** Implement a user-friendly graphical interface to navigate through the different race weekends, sessions and available formats for reviewing data. ([@IAmTomShaw](https://github.com/IAmTomShaw) is currently working on this)

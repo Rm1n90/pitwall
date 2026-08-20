@@ -8,6 +8,77 @@ from PySide6.QtWidgets import QApplication
 from src.lib.season import get_season
 import logging
 
+
+def _arg_value(name, default=None, cast=str):
+    """Read the value that follows ``name`` in argv, if present."""
+    if name not in sys.argv:
+        return default
+    index = sys.argv.index(name) + 1
+    if index >= len(sys.argv):
+        return default
+    try:
+        return cast(sys.argv[index])
+    except (TypeError, ValueError):
+        print(f"Ignoring invalid value for {name}: {sys.argv[index]!r}")
+        return default
+
+
+def run_live_auth():
+    """Handle the Formula 1 sign-in helper flags. Returns an exit code."""
+    from src.live import auth
+
+    if "--live-login" in sys.argv:
+        return auth.sign_in()
+    if "--live-logout" in sys.argv:
+        return auth.sign_out()
+    return auth.print_status()
+
+
+def run_live():
+    """Watch the session that is running right now.
+
+    Returns the process exit code so the caller can propagate failures.
+    """
+    from src.live.config import (
+        SOURCE_AUTO, SOURCE_SIMULATED, VALID_SOURCES, LiveConfig,
+    )
+    from src.live.session import LiveSessionUnavailable, run_live_session
+
+    source = _arg_value("--live-source", SOURCE_AUTO)
+    if source not in VALID_SOURCES:
+        print(f"Unknown --live-source {source!r}; "
+              f"expected one of {', '.join(VALID_SOURCES)}")
+        return 2
+
+    config = LiveConfig(
+        source=source,
+        delay_s=_arg_value("--live-delay", None, float),
+        no_auth="--live-no-auth" in sys.argv,
+        record_path=_arg_value("--live-record"),
+        simulated_speed=_arg_value("--live-speed", 1.0, float),
+        simulated_start_offset_s=_arg_value("--live-offset", 0.0, float),
+    )
+
+    session_path = _arg_value("--live-path")
+    if config.source == SOURCE_SIMULATED and not session_path:
+        print("The simulated source needs --live-path "
+              "(for example 2026/2026-07-26_Hungarian_Grand_Prix/2026-07-26_Race/)")
+        return 2
+
+    enable_cache()
+    try:
+        run_live_session(
+            config=config,
+            session_path=session_path,
+            ready_file=_arg_value("--ready-file"),
+            visible_hud="--no-hud" not in sys.argv,
+            refresh_track="--refresh-data" in sys.argv,
+        )
+    except LiveSessionUnavailable as exc:
+        print(f"\n{exc}\n")
+        return 1
+    return 0
+
 def main(year=None, round_number=None, playback_speed=1, session_type='R', visible_hud=True, ready_file=None, show_telemetry_viewer=True):
   print(f"Loading F1 {year} Round {round_number} Session '{session_type}'")
   session = load_session(year, round_number, session_type)
@@ -118,6 +189,15 @@ if __name__ == "__main__":
     # Run the CLI
     cli_load()
     sys.exit(0)
+
+  if any(flag in sys.argv for flag in
+         ("--live-login", "--live-logout", "--live-auth")):
+    # Manage the optional Formula 1 sign-in used by the SignalR feed
+    sys.exit(run_live_auth())
+
+  if "--live" in sys.argv:
+    # Watch the session that is happening right now
+    sys.exit(run_live())
 
   if "--year" in sys.argv:
     year_index = sys.argv.index("--year") + 1

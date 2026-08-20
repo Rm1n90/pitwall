@@ -15,6 +15,40 @@ from src.f1_data import get_race_weekends_by_year, get_race_weekends_by_place, g
 from src.gui.settings_dialog import SettingsDialog
 from src.lib.season import get_season
 
+# Worker thread that checks whether a session is running right now
+class CheckLiveWorker(QThread):
+    result = Signal(object)
+
+    def run(self):
+        try:
+            from src.live.schedule import (
+                describe_wait, find_next_scheduled_session,
+                resolve_live_session,
+            )
+            live = resolve_live_session()
+            if live is not None:
+                self.result.emit({
+                    "live": True,
+                    "title": live.title,
+                    "label": f"🔴  WATCH LIVE - {live.title}",
+                })
+                return
+            upcoming = find_next_scheduled_session()
+            if upcoming is not None:
+                wait = describe_wait(upcoming.seconds_until_start())
+                self.result.emit({
+                    "live": False,
+                    "title": upcoming.title,
+                    "label": f"No live session - {upcoming.title} in {wait}",
+                })
+                return
+            self.result.emit({"live": False, "title": "",
+                              "label": "No live session right now"})
+        except Exception as exc:
+            self.result.emit({"live": False, "title": "",
+                              "label": f"Live status unavailable ({exc})"})
+
+
 # Worker thread to fetch schedule without blocking UI
 class FetchScheduleWorker(QThread):
     result = Signal(object)
@@ -76,6 +110,15 @@ class RaceSelectionWindow(QMainWindow):
         header_layout.addStretch()
         header_layout.addWidget(settings_btn)
         main_layout.addLayout(header_layout)
+
+        # Live session banner
+        self.live_btn = QPushButton("Checking for a live session...")
+        self.live_btn.setCursor(Qt.PointingHandCursor)
+        self.live_btn.setFixedHeight(44)
+        self.live_btn.setEnabled(False)
+        self.live_btn.clicked.connect(self.launch_live)
+        main_layout.addWidget(self.live_btn)
+        self._start_live_check()
 
         # Year selection
         year_layout = QHBoxLayout()
@@ -146,6 +189,42 @@ class RaceSelectionWindow(QMainWindow):
         self.session_panel.hide()
         self.load_schedule(year=self.current_year)
         
+    def _start_live_check(self):
+        """Check for a running session now, and again every minute."""
+        self._live_worker = CheckLiveWorker(self)
+        self._live_worker.result.connect(self._on_live_status)
+        self._live_worker.start()
+
+        if not hasattr(self, "_live_timer"):
+            self._live_timer = QTimer(self)
+            self._live_timer.timeout.connect(self._start_live_check)
+            self._live_timer.start(60_000)
+
+    def _on_live_status(self, status):
+        self.live_btn.setText(status.get("label", ""))
+        self.live_btn.setEnabled(bool(status.get("live")))
+        if status.get("live"):
+            self.live_btn.setStyleSheet(
+                "QPushButton { background-color: #c62828; color: white; "
+                "font-weight: bold; border-radius: 6px; }"
+            )
+        else:
+            self.live_btn.setStyleSheet("")
+
+    def launch_live(self):
+        """Open the live viewer in a separate process."""
+        main_path = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "main.py")
+        )
+        cmd = [sys.executable, main_path, "--live"]
+        if "--verbose" in sys.argv:
+            cmd.append("--verbose")
+        try:
+            self._live_proc = subprocess.Popen(cmd)
+        except Exception as exc:
+            QMessageBox.critical(self, "Live error",
+                                 f"Failed to start the live viewer:\n{exc}")
+
     def load_schedule(self, year=None, events=None):
         if self.loading_session:
             return

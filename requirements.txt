@@ -2,6 +2,9 @@ fastf1
 pandas
 matplotlib
 numpy
+scipy
+requests
+signalrcore
 arcade
 pyglet
 pyside6

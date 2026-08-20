@@ -31,7 +31,7 @@ class F1RaceReplayWindow(arcade.Window):
                  playback_speed=1.0, driver_colors=None, circuit_rotation=0.0,
                  left_ui_margin=340, right_ui_margin=260, total_laps=None, visible_hud=True,
                  session_info=None, session=None, enable_telemetry=False,
-                 race_control_messages=None):
+                 race_control_messages=None, live_engine=None):
         # Set resizable to True so the user can adjust mid-sim
         super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, title, resizable=True)
         self.maximize()
@@ -53,8 +53,15 @@ class F1RaceReplayWindow(arcade.Window):
         self.frames = frames
         self.track_statuses = track_statuses
         self.race_control_messages = race_control_messages or []
-        self.n_frames = len(frames)
         self.drivers = list(drivers)
+
+        # Live mode keeps appending to `frames`, so anything that needs the
+        # frame count must read it through the `n_frames` property below.
+        self.live = None
+        if live_engine is not None:
+            from src.interfaces.live_mode import LiveModeController
+
+            self.live = LiveModeController(self, live_engine)
         self.playback_speed = PLAYBACK_SPEEDS[PLAYBACK_SPEEDS.index(playback_speed)] if playback_speed in PLAYBACK_SPEEDS else 1.0
         self.driver_colors = driver_colors or {}
         self.frame_index = 0.0  # use float for fractional-frame accumulation
@@ -228,6 +235,15 @@ class F1RaceReplayWindow(arcade.Window):
         
         # Broadcast initial telemetry state
         self._broadcast_telemetry_state()
+
+    @property
+    def n_frames(self):
+        """Number of frames available right now.
+
+        This is a property because in live mode the frame list keeps growing
+        while the window is open.
+        """
+        return len(self.frames)
 
     def _broadcast_telemetry_state(self):
         """Broadcast current telemetry state to connected clients."""
@@ -1284,7 +1300,11 @@ class F1RaceReplayWindow(arcade.Window):
             )
 
         # 2. Draw Track (using pre-calculated screen points)
-        idx = min(int(self.frame_index), self.n_frames - 1)
+        if self.n_frames == 0:
+            # Live mode: the feed has not produced a frame yet.
+            self._draw_waiting_for_live()
+            return
+        idx = max(0, min(int(self.frame_index), self.n_frames - 1))
         frame = self.frames[idx]
         current_time = frame["t"]
         current_track_status = "GREEN"
@@ -1555,10 +1575,34 @@ class F1RaceReplayWindow(arcade.Window):
         
         # Draw tooltips and overlays on top of everything
         self.progress_bar_comp.draw_overlays(self)
-                    
+
+        # Live indicator sits above everything else
+        if self.live is not None:
+            self.live.draw_badge()
+
+    def _draw_waiting_for_live(self):
+        """Placeholder shown until the live feed produces its first frame."""
+        message = "Waiting for live timing data..."
+        if self.live is not None:
+            message = f"{self.live.engine.status_text()} - waiting for cars"
+        arcade.Text(
+            message, self.width // 2, self.height // 2,
+            arcade.color.WHITE, 20, anchor_x="center", anchor_y="center",
+        ).draw()
+
     def on_update(self, delta_time: float):
         self.race_controls_comp.on_update(delta_time)
-        
+
+        if self.n_frames == 0:
+            # Live mode can briefly have no frames while the feed connects.
+            return
+
+        if self.live is not None:
+            self.live.on_update(delta_time)
+            if self.live.following:
+                self._broadcast_telemetry_state()
+                return
+
         seek_speed = 3.0 * max(1.0, self.playback_speed) # Multiplier for seeking speed, scales with current playback speed
         if self.is_rewinding:
             self.frame_index = max(0.0, self.frame_index - delta_time * FPS * seek_speed)
@@ -1582,6 +1626,8 @@ class F1RaceReplayWindow(arcade.Window):
         # Allow ESC to close window at any time
         if symbol == arcade.key.ESCAPE:
             arcade.close_window()
+            return
+        if self.live is not None and self.live.on_key_press(symbol):
             return
         if symbol == arcade.key.SPACE:
             self.paused = not self.paused
@@ -1675,8 +1721,12 @@ class F1RaceReplayWindow(arcade.Window):
         if self.controls_popup_comp.on_mouse_press(self, x, y, button, modifiers):
             return
         if self.race_controls_comp.on_mouse_press(self, x, y, button, modifiers):
+            if self.live is not None:
+                self.live.leave_live()
             return
         if self.progress_bar_comp.on_mouse_press(self, x, y, button, modifiers):
+            if self.live is not None:
+                self.live.leave_live()
             return
         if self.leaderboard_comp.on_mouse_press(self, x, y, button, modifiers):
             return
@@ -1692,6 +1742,12 @@ class F1RaceReplayWindow(arcade.Window):
         
     def close(self):
         """Clean up resources when window closes."""
+        if getattr(self, 'live', None) is not None:
+            print("Stopping live session engine...")
+            try:
+                self.live.engine.stop()
+            except Exception as exc:
+                print(f"Error stopping live engine: {exc}")
         if hasattr(self, 'telemetry_stream') and self.telemetry_stream:
             print("Stopping telemetry stream server...")
             self.telemetry_stream.stop()

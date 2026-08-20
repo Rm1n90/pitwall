@@ -95,6 +95,25 @@ The `safety_car` field in each frame contains the simulated Safety Car position 
 | `phase` | string | Current animation phase: `"deploying"`, `"on_track"`, or `"returning"` |
 | `alpha` | float | Opacity value `0.0`–`1.0` for fade animation |
 
+### Live Sessions
+
+During a live session (`python main.py --live`) the stream carries the exact
+same structure, produced from the F1 live timing feeds instead of a completed
+session. Each driver additionally gets:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `gap_to_leader` | string | Official gap to the leader, e.g. `"+1.234"` or `"LAP 12"` |
+| `interval` | string | Official interval to the car ahead |
+| `retired` | bool | Whether the timing feed has marked the car as retired |
+| `on_track` | bool | Whether the position feed reports the car on track |
+
+Two differences are worth knowing about: `position` comes from the official
+running order rather than being derived from race distance, and `drs` is always
+`0` because the DRS channel was removed from the feed for 2026.
+
+See [docs/LiveMode.md](./docs/LiveMode.md) for the full picture.
+
 > **Note:** The Safety Car position is simulated (placed ~500m ahead of the race leader) since the F1 API does not provide real SC GPS data. The `phase` field is useful for triggering visual effects in custom tools.
 
 ## Technical Details
