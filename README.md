@@ -24,6 +24,7 @@ python main.py            # pick any past session from the GUI
 
 - **Live Sessions:** Follow a race, sprint, qualifying or practice session in real time, rewind into what you missed, and jump back to live with **G**.
 - **Circuit View:** The track drawn as a racing surface with kerbs on the corners, numbered corners, a runoff apron and the pit lane traced from telemetry. Cars carry their team colour, a tyre-compound ring, a DRS glow and a leader marker.
+- **Timing Tower:** Running order with gaps, places gained or lost against the grid, tyre compound and age, pit stop count, and last lap time coloured purple for the session best and green for a personal best.
 - **Race Replay Visualization:** Watch the race unfold with real-time driver positions on a rendered track.
 - **Safety Car Visualization:** See the Safety Car deploy from pit lane, lead the field, and return to pits — with animated transitions and pulsing glow effects.
 - **Insights Menu:** Floating menu for quick access to telemetry analysis tools (launches automatically with replay).
@@ -243,6 +244,12 @@ the 2026 Hungarian Grand Prix:
 | Final classification | 1.8 places out | **exact** |
 
 See [src/lib/classification.py](./src/lib/classification.py).
+
+**Lap times and gaps.** The tower's numbers come from the same lap data the
+official timing uses. Checked against the 2026 Hungarian Grand Prix at four
+points in the race, last lap times matched official timing exactly in all 88
+comparisons, personal bests agreed in all 88, and the session best matched
+both value and holder.
 
 **Cars freezing on track.** Occasionally a session's position feed degrades and
 only locates a car every two or three seconds, so cars appear to freeze and

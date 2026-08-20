@@ -988,12 +988,22 @@ def get_race_telemetry(session, session_type="R"):
             code = car["code"]
             position = positions[code]
 
-            #Pit stop detection
+            # Pit stop detection, plus how many stops are already behind them
             in_pit=False
+            pit_stops=0
             for start,end in pit_windows_shifted.get(code,[]):
                 if start<=t<=end:
                     in_pit=True
-                    break
+                elif end<t:
+                    pit_stops+=1
+
+            info=classification.get(code)
+            retired=bool(
+                info is not None
+                and not info.took_flag
+                and info.finish_time_s is not None
+                and t > info.finish_time_s
+            )
             
             # include speed, gear, drs_active in frame driver dict
             frame_data[code] = {
@@ -1012,7 +1022,9 @@ def get_race_telemetry(session, session_type="R"):
                 "drs": car["drs"],
                 "throttle": car["throttle"],
                 "brake": car["brake"],
-                "in_pit": in_pit
+                "in_pit": in_pit,
+                "pit_stops": pit_stops,
+                "retired": retired
             }
 
         weather_snapshot = {}

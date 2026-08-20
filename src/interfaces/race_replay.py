@@ -5,7 +5,6 @@ import numpy as np
 from scipy.spatial import cKDTree
 from src.f1_data import FPS
 from src.ui_components import (
-    LeaderboardComponent, 
     WeatherComponent, 
     LegendComponent, 
     DriverInfoComponent, 
@@ -17,7 +16,9 @@ from src.ui_components import (
     build_track_from_example_lap,
     draw_finish_line
 )
+from src.lib.lap_history import LapHistory
 from src.render.cars import draw_car, draw_label, draw_safety_car
+from src.render.timing_tower import TimingTower
 from src.render.track import TrackRenderer, corner_labels_from_circuit_info
 from src.tyre_degradation_integration import TyreDegradationIntegrator
 from src.services.stream import TelemetryStreamServer
@@ -36,7 +37,7 @@ BOTTOM_UI_MARGIN = 120
 class F1RaceReplayWindow(arcade.Window):
     def __init__(self, frames, track_statuses, example_lap, drivers, title,
                  playback_speed=1.0, driver_colors=None, circuit_rotation=0.0,
-                 left_ui_margin=340, right_ui_margin=260, total_laps=None, visible_hud=True,
+                 left_ui_margin=340, right_ui_margin=330, total_laps=None, visible_hud=True,
                  session_info=None, session=None, enable_telemetry=False,
                  race_control_messages=None, live_engine=None,
                  circuit_info=None, pit_lane=None):
@@ -81,6 +82,8 @@ class F1RaceReplayWindow(arcade.Window):
         # This avoids playback-speed-dependent sampling errors when insight
         # windows try to derive lap times from the streamed frames.
         self._precomputed_lap_times = self._compute_lap_times(frames, session)
+        # Indexed so the tower can ask for lap times at any replay position.
+        self._lap_history = LapHistory(self._precomputed_lap_times)
         self._precomputed_status_laps = self._compute_status_laps(frames, track_statuses)
         self.visible_hud = visible_hud # If it displays HUD or not (leaderboard, controls, weather, etc)
 
@@ -96,7 +99,7 @@ class F1RaceReplayWindow(arcade.Window):
         self.show_driver_labels = False
         # UI components
         leaderboard_x = max(20, self.width - self.right_ui_margin + 12)
-        self.leaderboard_comp = LeaderboardComponent(x=leaderboard_x, width=240, visible=visible_hud)
+        self.leaderboard_comp = TimingTower(x=leaderboard_x, width=290, visible=visible_hud)
         self.weather_comp = WeatherComponent(left=20, top_offset=170, visible=visible_hud)
         self.legend_comp = LegendComponent(x=max(12, self.left_ui_margin - 320), visible=visible_hud)
         self.driver_info_comp = DriverInfoComponent(left=20, width=300)
@@ -156,6 +159,20 @@ class F1RaceReplayWindow(arcade.Window):
                 date=session_info.get('date', ''),
                 total_laps=total_laps
             )
+
+        # Starting grid, used by the tower to show places gained or lost.
+        self.grid_positions = {}
+        if session is not None:
+            try:
+                results = getattr(session, "results", None)
+                if results is not None and not results.empty:
+                    for _, row in results.iterrows():
+                        code = str(row.get("Abbreviation") or "")
+                        slot = row.get("GridPosition")
+                        if code and slot and slot > 0:
+                            self.grid_positions[code] = int(slot)
+            except Exception as e:
+                print(f"Grid positions unavailable: {e}")
 
         self.is_rewinding = False
         self.is_forwarding = False
@@ -1531,8 +1548,12 @@ class F1RaceReplayWindow(arcade.Window):
         driver_list = []
         for code, pos in frame["drivers"].items():
             color = self.driver_colors.get(code, arcade.color.WHITE)
-            progress_m = driver_progress.get(code, float(pos.get("dist", 0.0)))
-            driver_list.append((code, color, pos, progress_m))
+            progress = pos.get("progress")
+            if progress is None:
+                # Older cached data: fall back to along-track distance.
+                progress = driver_progress.get(code, 0.0) / max(
+                    self._ref_total_length, 1.0)
+            driver_list.append((code, color, pos, float(progress)))
 
         # The frame already carries the ranked position, which accounts for
         # the chequered flag; fall back to progress for older cached data.
@@ -1542,6 +1563,23 @@ class F1RaceReplayWindow(arcade.Window):
             driver_list.sort(key=lambda entry: entry[3], reverse=True)
 
         self.last_leaderboard_order = [c for c, _, _, _ in driver_list]
+
+        # Lap times, grid positions and a reference lap for turning part-lap
+        # gaps into seconds.
+        history = self._lap_history.snapshot(current_time)
+        tower = self.leaderboard_comp
+        tower.last_laps = history["last_laps"]
+        tower.personal_bests = history["personal_bests"]
+        tower.session_best = history["session_best"]
+        tower.session_best_code = history["session_best_code"]
+        tower.grid_positions = self.grid_positions
+        leader = driver_list[0][0] if driver_list else None
+        tower.reference_lap_s = (
+            history["last_laps"].get(leader)
+            or history["session_best"]
+            or tower.reference_lap_s
+        )
+
         self.leaderboard_comp.set_entries(driver_list)
         self.leaderboard_comp.draw(self)
         # expose rects for existing hit test compatibility if needed
