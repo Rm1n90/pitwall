@@ -16,6 +16,7 @@ from src.lib.classification import (
     assign_positions,
     read_classification,
 )
+from src.lib.frame_store import load as load_frames, save as save_frames
 from src.lib.settings import get_settings
 from src.lib.track_geometry import TrackLine, rebuild_positions
 from src.lib.time import parse_time_string
@@ -645,18 +646,24 @@ def get_race_telemetry(session, session_type="R"):
     cache_suffix = "sprint" if session_type == "S" else "race"
 
     # Check if this data has already been computed
+    base = f"computed_data/{event_name}_{cache_suffix}_telemetry"
 
-    try:
-        if "--refresh-data" not in sys.argv:
-            with open(
-                f"computed_data/{event_name}_{cache_suffix}_telemetry.pkl", "rb"
-            ) as f:
-                frames = pickle.load(f)
-                print(f"Loaded precomputed {cache_suffix} telemetry data.")
-                print("The replay should begin in a new window shortly!")
-                return frames
-    except FileNotFoundError:
-        pass  # Need to compute from scratch
+    if "--refresh-data" not in sys.argv:
+        cached = load_frames(f"{base}.npz")
+        if cached is not None:
+            print(f"Loaded precomputed {cache_suffix} telemetry data.")
+            print("The replay should begin in a new window shortly!")
+            return cached
+
+        # Sessions computed before the compact format was introduced.
+        try:
+            with open(f"{base}.pkl", "rb") as f:
+                cached = pickle.load(f)
+            print(f"Loaded precomputed {cache_suffix} telemetry data "
+                  f"(older format; re-run with --refresh-data to shrink it).")
+            return cached
+        except FileNotFoundError:
+            pass  # Need to compute from scratch
 
     drivers = session.drivers
 
@@ -1067,24 +1074,10 @@ def get_race_telemetry(session, session_type="R"):
     _compute_safety_car_positions(frames, formatted_track_statuses, session)
     print("completed telemetry extraction...")
     print("Saving to cache file...")
-    # If computed_data/ directory doesn't exist, create it
     if not os.path.exists("computed_data"):
         os.makedirs("computed_data")
 
-    # Save using pickle (10-100x faster than JSON)
-    with open(f"computed_data/{event_name}_{cache_suffix}_telemetry.pkl", "wb") as f:
-        pickle.dump({
-            "frames": frames,
-            "driver_colors": get_driver_colors(session),
-            "track_statuses": formatted_track_statuses,
-            "race_control_messages": formatted_rc_messages,
-            "total_laps": int(max_lap_number),
-            "max_tyre_life": max_tyre_life_map,
-        }, f, protocol=pickle.HIGHEST_PROTOCOL)
-
-    print("Saved Successfully!")
-    print("The replay should begin in a new window shortly")
-    return {
+    result = {
         "frames": frames,
         "driver_colors": get_driver_colors(session),
         "track_statuses": formatted_track_statuses,
@@ -1092,6 +1085,20 @@ def get_race_telemetry(session, session_type="R"):
         "total_laps": int(max_lap_number),
         "max_tyre_life": max_tyre_life_map,
     }
+
+    # Stored as columns rather than as a list of dictionaries: a race is about
+    # 150,000 frames of twenty cars, and the object overhead of writing that
+    # out as dictionaries costs roughly fourteen times the space.
+    try:
+        save_frames(f"{base}.npz", result, lap_length_m=lap_length_m)
+    except Exception as e:
+        print(f"Could not save the compact cache, falling back: {e}")
+        with open(f"{base}.pkl", "wb") as f:
+            pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+    print("Saved Successfully!")
+    print("The replay should begin in a new window shortly")
+    return result
 
 
 def get_qualifying_results(session):
