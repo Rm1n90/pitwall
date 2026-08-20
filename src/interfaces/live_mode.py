@@ -138,6 +138,10 @@ class LiveModeController:
             history = self.engine.state.position_history
             if history:
                 window._position_history = to_payload(history)
+
+            prediction = self.engine.state.championship_prediction
+            if prediction:
+                window.championship_prediction = prediction
         except Exception as exc:
             print(f"[live] pit stop times unavailable: {exc}")
 

@@ -334,6 +334,8 @@ class LiveSessionState:
         self.extrapolated_clock: dict = {}
         #: ``{code: [(lap, position), ...]}`` for the position chart.
         self.position_history: Dict[str, list] = {}
+        #: Where the championship would stand if the session ended now.
+        self.championship_prediction: dict = {}
         self.samples: Dict[str, DriverSamples] = {}
 
         #: UTC instant that frame time ``t = 0`` corresponds to.
@@ -496,6 +498,17 @@ class LiveSessionState:
             # The feed resends the whole series, so replacing is correct and
             # avoids accumulating duplicates.
             self.pit_stops[str(number)] = stops
+
+    def _apply_championship_prediction(self, message: LiveMessage) -> None:
+        from src.lib.standings import parse_prediction
+
+        parsed = parse_prediction(message.data)
+        if parsed["drivers"] or parsed["teams"]:
+            # Each driver's code makes the projection usable without the
+            # window having to map car numbers itself.
+            for number, row in parsed["drivers"].items():
+                row["code"] = self.driver_code(number)
+            self.championship_prediction = parsed
 
     def _apply_lap_series(self, message: LiveMessage) -> None:
         from src.lib.position_history import from_lap_series, merge
@@ -698,6 +711,7 @@ _HANDLERS = {
     "PitStopSeries": LiveSessionState._apply_pit_stops,
     "ExtrapolatedClock": LiveSessionState._apply_extrapolated_clock,
     "LapSeries": LiveSessionState._apply_lap_series,
+    "ChampionshipPrediction": LiveSessionState._apply_championship_prediction,
     "Position": LiveSessionState._apply_position,
     "CarData": LiveSessionState._apply_car_data,
 }

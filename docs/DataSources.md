@@ -37,7 +37,6 @@ set the countdown has to be continued from `Utc` rather than read off
 |------|-----------------|-----------------------|
 | **TimingStats** | Personal best lap, best sector times with field position, best speeds at each trap | A proper timing tower: purple/green sector colouring, speed trap rankings |
 | **TyreStintSeries** | Every stint for every driver with compound, age and whether the set was new | A full strategy chart without deriving it from lap data |
-| **ChampionshipPrediction** | Live projected championship positions for drivers and teams | "If the race ended now" standings |
 | **TeamRadio** | Timestamped MP3 clips per driver | Radio messages on the timeline, playable |
 | **CurrentTyres** | Current compound and whether new | Simpler and more direct than deriving from `TimingAppData` |
 | **TopThree** | Podium positions | A broadcast-style podium panel |
@@ -92,9 +91,8 @@ instead, which is unambiguous and already verified.
 
 **Jolpica** (`api.jolpi.ca/ergast/f1/...`) — the maintained Ergast successor,
 no key required. Championship standings, full historical results, qualifying
-results, constructor data. Verified working: 2025 driver standings returned
-NOR 423, VER 421, PIA 410. This is the natural source for season context that
-the live feed does not carry.
+results, constructor data. Now used for the standings window, cached for a day
+since standings only change when a race finishes.
 
 **OpenF1** (`api.openf1.org`) — a friendlier reshaping of the same F1 feed.
 Free tier is historical only; live data needs a paid account. We already read

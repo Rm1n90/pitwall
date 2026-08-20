@@ -82,6 +82,7 @@ class LiveConfig:
         "SessionData", "TrackStatus", "LapCount", "TimingData",
         "TimingAppData", "TimingStats", "WeatherData",
         "RaceControlMessages", "ExtrapolatedClock", "LapSeries",
+        "ChampionshipPrediction",
         "Position.z", "CarData.z",
     ))
 

@@ -34,6 +34,7 @@ SUPPLEMENTARY_TOPICS = ("PitStopSeries",)
 DEFAULT_STATIC_TOPICS = (
     "PitStopSeries",
     "LapSeries",
+    "ChampionshipPrediction",
     "ExtrapolatedClock",
     "SessionInfo",
     "DriverList",
@@ -53,6 +54,7 @@ DEFAULT_STATIC_TOPICS = (
 KEYFRAME_TOPICS = (
     "PitStopSeries",
     "LapSeries",
+    "ChampionshipPrediction",
     "ExtrapolatedClock",
     "SessionInfo",
     "DriverList",

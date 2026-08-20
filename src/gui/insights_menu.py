@@ -80,6 +80,7 @@ class InsightsMenu(QMainWindow):
             [
                 ("Lap Time & Gap Evolution", "Lap time and gap trends per driver", self.launch_lap_time_chart),
                 ("Race Position Chart", "Every driver's position, lap by lap", self.launch_position_chart),
+                ("Championship Standings", "Where the season stands, and where it would stand after this race", self.launch_standings),
             ]
         ))
         
@@ -206,6 +207,13 @@ class InsightsMenu(QMainWindow):
         print("🚀 Launching: Race Position Chart")
         from src.insights.position_chart_window import PositionChartWindow
         window = PositionChartWindow()
+        window.show()
+        self.opened_windows.append(window)
+
+    def launch_standings(self):
+        print("🚀 Launching: Championship Standings")
+        from src.insights.standings_window import StandingsWindow
+        window = StandingsWindow()
         window.show()
         self.opened_windows.append(window)
 

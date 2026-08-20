@@ -166,6 +166,7 @@ class F1RaceReplayWindow(arcade.Window):
         # Session info banner component
         self.session_info_comp = SessionInfoComponent(visible=visible_hud)
         self.circuit_length_m = session_info.get('circuit_length_m') if session_info else None
+        self.season_year = session_info.get('year') if session_info else None
         if session_info:
             self.session_info_comp.set_info(
                 event_name=session_info.get('event_name', ''),
@@ -417,7 +418,8 @@ class F1RaceReplayWindow(arcade.Window):
                 "time_s": float(t),
                 "lap": leader_lap,
                 "leader": leader_code,
-                "total_laps": self.total_laps
+                "total_laps": self.total_laps,
+                "year": self.season_year
             }
         }
 
@@ -439,6 +441,8 @@ class F1RaceReplayWindow(arcade.Window):
         payload["lap_times"] = self._precomputed_lap_times
         payload["status_laps"] = self._precomputed_status_laps
         payload["position_history"] = self._position_history
+        if getattr(self, "championship_prediction", None):
+            payload["championship_prediction"] = self.championship_prediction
 
         self.telemetry_stream.broadcast(payload)
 
