@@ -228,7 +228,10 @@ timing map does the same.
 - **Tyre degradation modelling is off** in live mode; it needs a completed
   session's lap data.
 - **Lap times** come from the timing feed rather than from the replay's own
-  lap detection, so the lap-time chart fills in as the session runs.
+  lap detection, so the lap-time chart fills in as the session runs. The tower
+  reads each driver's last and best lap, and their sector colours, straight
+  from the feed: it says outright which times are personal or overall bests,
+  so none of it has to be inferred while the session is still running.
 - **Practice and qualifying** work, but they are shown with the race layout
   (cars on track and a running order), not the qualifying-specific screens.
 

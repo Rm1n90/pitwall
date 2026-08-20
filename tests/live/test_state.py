@@ -289,3 +289,113 @@ class TestPitStopsInState:
         state.apply(LiveMessage("PitStopSeries", payload))
 
         assert len(state.pit_stops["1"]) == 1
+
+
+def _timing_message(lines: dict, stream_time: str = "00:10:00.000") -> LiveMessage:
+    return LiveMessage("TimingData", {"Lines": lines}, stream_time)
+
+
+class TestLapTimesFromTheFeed:
+    """The feed says outright which times are personal or overall bests.
+
+    Nothing has to be inferred from the sector status codes, which is worth
+    relying on: the codes are undocumented.
+    """
+
+    def test_reads_the_last_lap_time(self):
+        state = LiveSessionState()
+        state.apply(_timing_message({"1": {"LastLapTime": {"Value": "1:22.491"}}}))
+
+        assert state.last_lap_time("1") == pytest.approx(82.491)
+
+    def test_reads_the_best_lap_time(self):
+        state = LiveSessionState()
+        state.apply(_timing_message({"1": {"BestLapTime": {"Value": "1:20.100"}}}))
+
+        assert state.best_lap_time("1") == pytest.approx(80.1)
+
+    def test_a_driver_with_no_lap_yet_has_no_times(self):
+        state = LiveSessionState()
+        assert state.last_lap_time("1") is None
+        assert state.best_lap_time("1") is None
+
+    def test_an_empty_time_reads_as_no_time(self):
+        # Before a driver sets a lap the feed sends an empty string.
+        state = LiveSessionState()
+        state.apply(_timing_message({"1": {"BestLapTime": {"Value": ""}}}))
+
+        assert state.best_lap_time("1") is None
+
+    def test_a_later_message_replaces_the_earlier_one(self):
+        state = LiveSessionState()
+        state.apply(_timing_message({"1": {"LastLapTime": {"Value": "1:22.491"}}}))
+        state.apply(_timing_message({"1": {"LastLapTime": {"Value": "1:21.004"}}}))
+
+        assert state.last_lap_time("1") == pytest.approx(81.004)
+
+
+class TestSectorStatusFromTheFeed:
+
+    def test_a_normal_sector_reads_as_normal(self):
+        state = LiveSessionState()
+        state.apply(_timing_message({"1": {"Sectors": [
+            {"Value": "28.1", "OverallFastest": False, "PersonalFastest": False},
+        ]}}))
+
+        assert state.sector_status("1")[0] == 0
+
+    def test_a_personal_best_sector_is_marked(self):
+        state = LiveSessionState()
+        state.apply(_timing_message({"1": {"Sectors": [
+            {"Value": "28.1", "OverallFastest": False, "PersonalFastest": True},
+        ]}}))
+
+        assert state.sector_status("1")[0] == 1
+
+    def test_an_overall_best_sector_is_marked(self):
+        state = LiveSessionState()
+        state.apply(_timing_message({"1": {"Sectors": [
+            {"Value": "27.9", "OverallFastest": True, "PersonalFastest": True},
+        ]}}))
+
+        assert state.sector_status("1")[0] == 2
+
+    def test_all_three_sectors_come_back(self):
+        state = LiveSessionState()
+        state.apply(_timing_message({"1": {"Sectors": [
+            {"Value": "28.1", "PersonalFastest": True},
+            {"Value": "31.0"},
+            {"Value": "23.4", "OverallFastest": True},
+        ]}}))
+
+        assert state.sector_status("1") == [1, 0, 2]
+
+    def test_a_driver_with_no_sectors_reads_as_normal(self):
+        state = LiveSessionState()
+        assert state.sector_status("1") == [0, 0, 0]
+
+    def test_sectors_arriving_as_a_partial_update_are_merged(self):
+        # Updates address individual sectors by index rather than resending
+        # the whole array.
+        state = LiveSessionState()
+        state.apply(_timing_message({"1": {"Sectors": [
+            {"Value": "28.1"}, {"Value": ""}, {"Value": ""},
+        ]}}))
+        state.apply(_timing_message({"1": {"Sectors": {
+            "1": {"Value": "31.0", "OverallFastest": True},
+        }}}))
+
+        assert state.sector_status("1") == [0, 2, 0]
+
+
+class TestLapsCompleted:
+
+    def test_reads_the_lap_count(self):
+        state = LiveSessionState()
+        state.apply(_timing_message({"1": {"NumberOfLaps": 14}}))
+
+        assert state.laps_completed("1") == 14
+
+    def test_a_driver_who_has_not_run_has_none(self):
+        state = LiveSessionState()
+        assert state.laps_completed("1") is None

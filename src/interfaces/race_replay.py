@@ -468,6 +468,39 @@ class F1RaceReplayWindow(arcade.Window):
         self.telemetry_stream.broadcast(payload)
 
     @staticmethod
+    def _live_lap_snapshot(frame) -> dict:
+        """Build what the tower needs from a live frame.
+
+        The feed states each driver's last and best lap and marks their
+        sectors, so none of it has to be derived.
+        """
+        last_laps = {}
+        personal_bests = {}
+        sectors = {}
+        for code, car in frame.get("drivers", {}).items():
+            last = car.get("last_lap_s")
+            if last:
+                last_laps[code] = last
+            best = car.get("best_lap_s")
+            if best:
+                personal_bests[code] = best
+            sectors[code] = car.get("sectors") or [0, 0, 0]
+
+        session_best = None
+        session_best_code = None
+        for code, value in personal_bests.items():
+            if session_best is None or value < session_best:
+                session_best, session_best_code = value, code
+
+        return {
+            "last_laps": last_laps,
+            "personal_bests": personal_bests,
+            "session_best": session_best,
+            "session_best_code": session_best_code,
+            "sectors": sectors,
+        }
+
+    @staticmethod
     def _compute_lap_times(frames, session=None):
         """
         Scan the full frame array once to build deterministic lap times
@@ -1665,6 +1698,10 @@ class F1RaceReplayWindow(arcade.Window):
         # Lap times, grid positions and a reference lap for turning part-lap
         # gaps into seconds.
         history = self._lap_history.snapshot(current_time)
+        if self.live is not None:
+            # A running session has no lap table to index, so the frames
+            # carry what the timing feed publishes instead.
+            history = self._live_lap_snapshot(frame)
         tower = self.leaderboard_comp
         tower.last_laps = history["last_laps"]
         tower.personal_bests = history["personal_bests"]

@@ -199,3 +199,51 @@ class TestTrackStatuses:
         assert [s["status"] for s in statuses] == ["4", "1"]
         assert set(statuses[0]) == {"status", "start_time", "end_time"}
         assert statuses[0]["end_time"] == statuses[1]["start_time"]
+
+
+class TestLiveLapTimes:
+    """The tower needs lap times live, not only from a finished session.
+
+    Offline they come from FastF1's lap table; live there is no such table,
+    so the frames carry what the timing feed publishes.
+    """
+
+    def test_the_last_lap_time_reaches_the_frame(self, state, projector):
+        state.apply(LiveMessage("TimingData", {"Lines": {
+            "1": {"LastLapTime": {"Value": "1:22.491"}},
+        }}))
+        frame = LiveFrameBuilder(state, projector).build(1.0)
+
+        assert frame["drivers"]["NOR"]["last_lap_s"] == pytest.approx(82.491)
+
+    def test_the_best_lap_time_reaches_the_frame(self, state, projector):
+        state.apply(LiveMessage("TimingData", {"Lines": {
+            "1": {"BestLapTime": {"Value": "1:21.004"}},
+        }}))
+        frame = LiveFrameBuilder(state, projector).build(1.0)
+
+        assert frame["drivers"]["NOR"]["best_lap_s"] == pytest.approx(81.004)
+
+    def test_a_driver_without_a_lap_yet_carries_none(self, state, projector):
+        frame = LiveFrameBuilder(state, projector).build(1.0)
+
+        assert frame["drivers"]["NOR"]["last_lap_s"] is None
+        assert frame["drivers"]["NOR"]["best_lap_s"] is None
+
+    def test_sector_status_reaches_the_frame(self, state, projector):
+        state.apply(LiveMessage("TimingData", {"Lines": {
+            "1": {"Sectors": [
+                {"Value": "28.1", "PersonalFastest": True},
+                {"Value": "31.0"},
+                {"Value": "23.4", "OverallFastest": True},
+            ]},
+        }}))
+        frame = LiveFrameBuilder(state, projector).build(1.0)
+
+        assert frame["drivers"]["NOR"]["sectors"] == [1, 0, 2]
+
+    def test_a_driver_without_sectors_carries_three_normal_ones(
+            self, state, projector):
+        frame = LiveFrameBuilder(state, projector).build(1.0)
+
+        assert frame["drivers"]["NOR"]["sectors"] == [0, 0, 0]

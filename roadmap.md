@@ -14,8 +14,9 @@ interface.
 
 - **Live sessions.** Watch a session as it happens with `python main.py --live`.
   See [docs/LiveMode.md](./docs/LiveMode.md).
-- **Race, sprint and qualifying replays** with leaderboard, tyres, weather,
-  safety car and driver telemetry.
+- **Race, sprint, qualifying and practice replays** with leaderboard, tyres,
+  weather, safety car and driver telemetry. Practice is ranked on best lap
+  rather than track position, since it has no grid and no finishing order.
 - **Telemetry stream** so custom dashboards can run alongside the replay.
 
 ## Next
@@ -32,18 +33,16 @@ one championship.
 - Keep `src/live/sources/` transport-only, as it already is, so a new series
   means a new source plus a new frame builder, not a new application.
 
-### Practice sessions
-
-Combine the telemetry analysis used for qualifying with the track-position
-replay used for races: compare runs, stints and lap times across a practice
-session.
-
 ### Live mode depth
 
-- Sector and mini-sector timing from the feed, which is already received but
-  not yet visualised.
-- Live gap and interval charts.
-- Optional recording of a live session straight into a replayable file.
+- Live gap and interval charts. The feed already carries both, and the tower
+  shows the gap; charting how it moves over a stint is the missing part.
+- Mini-sector colouring on the track itself. The segment statuses arrive in
+  the feed, but there is no published mapping from a segment index to a place
+  on the circuit, so where to paint them is still unsolved. See
+  [docs/DataSources.md](./docs/DataSources.md).
+- Practice and qualifying run comparison: stint-by-stint lap time analysis of
+  the kind the qualifying view does for a single lap.
 
 ## Performance and user experience
 
@@ -54,7 +53,8 @@ session.
   modes and better toggles would let people focus on what they care about
   without capping how much can be added.
 - **Memory.** A full race holds a lot of frames. Live mode already bounds its
-  buffer; the offline path could use the same treatment.
+  buffer; the offline path still holds a whole session at once, though on disk
+  a race now costs about 35 MB rather than 490 MB.
 
 ## Contributing
 

@@ -16,6 +16,9 @@ from collections import deque
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
+from src.lib.lap_history import (
+    SECTOR_NORMAL, SECTOR_OVERALL_BEST, SECTOR_PERSONAL_BEST,
+)
 from src.live.decoding import (
     LiveMessage,
     channels_to_telemetry,
@@ -623,6 +626,48 @@ class LiveSessionState:
         if isinstance(entry, dict):
             return parse_lap_time(entry.get("Value"))
         return None
+
+    def best_lap_time(self, number: str) -> Optional[float]:
+        """The driver's quickest lap of the session so far."""
+        entry = (self.timing.get(str(number)) or {}).get("BestLapTime")
+        if isinstance(entry, dict):
+            return parse_lap_time(entry.get("Value"))
+        return None
+
+    def sector_status(self, number: str) -> List[int]:
+        """How the driver's three most recent sectors compare.
+
+        The feed states outright whether a sector was the fastest anyone has
+        managed or merely the driver's own best, so nothing has to be inferred
+        from the undocumented status codes.
+        """
+        sectors = (self.timing.get(str(number)) or {}).get("Sectors")
+        if isinstance(sectors, dict):
+            # Updates address individual sectors by index rather than
+            # resending the whole array.
+            sectors = [sectors[key] for key in sorted(sectors, key=str)]
+        if not isinstance(sectors, list):
+            return [SECTOR_NORMAL] * 3
+
+        statuses = []
+        for sector in sectors[:3]:
+            if not isinstance(sector, dict):
+                statuses.append(SECTOR_NORMAL)
+            elif sector.get("OverallFastest"):
+                statuses.append(SECTOR_OVERALL_BEST)
+            elif sector.get("PersonalFastest"):
+                statuses.append(SECTOR_PERSONAL_BEST)
+            else:
+                statuses.append(SECTOR_NORMAL)
+        return statuses + [SECTOR_NORMAL] * (3 - len(statuses))
+
+    def laps_completed(self, number: str) -> Optional[int]:
+        """How many laps the driver has completed, as the feed reports it."""
+        value = (self.timing.get(str(number)) or {}).get("NumberOfLaps")
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
 
     def resolved_track_status_history(self) -> List[dict]:
         """Return the track status timeline with resolved frame times.

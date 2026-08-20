@@ -136,6 +136,11 @@ class LiveFrameBuilder:
             "brake": float(car.get("brake", 0.0)),
             "in_pit": bool(timing.get("InPit", False)),
             # Live-only extras; existing consumers ignore unknown keys.
+            # Offline these come from the lap table, which does not exist
+            # while a session is still running.
+            "last_lap_s": self.state.last_lap_time(number),
+            "best_lap_s": self.state.best_lap_time(number),
+            "sectors": self.state.sector_status(number),
             "gap_to_leader": str(timing.get("GapToLeader", "") or ""),
             "interval": str(interval or ""),
             "retired": bool(timing.get("Retired", False)),
