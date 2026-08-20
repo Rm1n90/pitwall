@@ -1,5 +1,6 @@
 import arcade
 from src.render.shapes import draw_tray
+from src.render import theme
 from typing import List, Literal, Tuple, Optional
 from typing import Sequence, Optional, Tuple
 from src.lib.time import format_time
@@ -21,6 +22,19 @@ def _format_wind_direction(degrees: Optional[float]) -> str:
   ]
   idx = int((deg_norm / 22.5) + 0.5) % len(dirs)
   return dirs[idx]
+
+# The panel has to hold a line like "Ahead (NOR): +0.73s (35.1m)" without it
+# running under the throttle and brake bars on the right, which is what
+# decides the width.
+DRIVER_PANEL_WIDTH = 296
+DRIVER_PANEL_HEIGHT = 244
+
+# The pedal bars occupy this much of the right-hand side, so nothing else may
+# extend past it.
+PEDAL_COLUMN_WIDTH = 75
+
+PORTRAIT_SIZE = 52
+
 
 class BaseComponent:
     def on_resize(self, window): pass
@@ -144,7 +158,8 @@ class LegendComponent(BaseComponent):
             self._text.draw()
 
 class WeatherComponent(BaseComponent):
-    def __init__(self, left=20, width=280, height=130, top_offset=170, visible=True):
+    def __init__(self, left=20, width=DRIVER_PANEL_WIDTH, height=130,
+                 top_offset=170, visible=True):
         self.left = left
         self.width = width
         self.height = height
@@ -194,7 +209,6 @@ class WeatherComponent(BaseComponent):
         panel_top = window.height - self.top_offset
         if not self.info and not getattr(window, "has_weather", False):
             return
-        arcade.Text("Weather", self.left + 12, panel_top - 10, arcade.color.WHITE, 18, bold=True, anchor_y="top").draw()
         def _fmt(val, suffix="", precision=1):
             return f"{val:.{precision}f}{suffix}" if val is not None else "N/A"
         info = self.info or {}
@@ -207,21 +221,32 @@ class WeatherComponent(BaseComponent):
             ("Rain", f"{info.get('rain_state','N/A')}", "rain"),
         ]
         
-        start_y = panel_top - 36
-        last_y = start_y
+        start_y = panel_top - 40
+        row_gap = 22
+        last_y = start_y - (len(weather_lines) - 1) * row_gap
 
-        self._text.font_size = 18; self._text.bold = True; self._text.color = arcade.color.WHITE
-        self._text.text = "Weather"
-        self._text.x = self.left + 12; self._text.y = panel_top - 10
+        # The panel behind the readings, so they sit on a surface rather
+        # than floating over the circuit.
+        # The rows are anchored at their tops and their icons hang 23px
+        # below that, so the padding has to clear the icons, not the text.
+        panel_bottom = last_y - theme.PAD - 20
+        theme.draw_panel(self.left, panel_bottom,
+                         self.left + self.width, panel_top + theme.GAP)
+
+        self._text.font_size = theme.SIZE_TITLE
+        self._text.bold = True
+        self._text.color = theme.TEXT
+        self._text.text = "WEATHER"
+        self._text.x = self.left + theme.PAD; self._text.y = panel_top - 6
         self._text.draw()
 
         for idx, (label, value, icon_key) in enumerate(weather_lines):
-            line_y = start_y - idx * 22
+            line_y = start_y - idx * row_gap
             last_y = line_y
             # Draw weather icon
             weather_texture = self._weather_icon_textures.get(icon_key)
             if weather_texture:
-                weather_icon_x = self.left + 24
+                weather_icon_x = self.left + theme.PAD + 8
                 weather_icon_y = line_y - 15
                 icon_size = 16
                 rect = arcade.XYWH(weather_icon_x, weather_icon_y, icon_size, icon_size)
@@ -234,15 +259,21 @@ class WeatherComponent(BaseComponent):
             
             # Draw text
 
-            line_text = f"{label}: {value}"
-            
-            self._text.font_size = 14; self._text.bold = False; self._text.color = arcade.color.LIGHT_GRAY
-            self._text.text = line_text
-            self._text.x = self.left + 38; self._text.y = line_y
+            self._text.font_size = theme.SIZE_SMALL
+            self._text.bold = False
+            self._text.color = theme.TEXT_MUTED
+            self._text.text = f"{label}"
+            self._text.x = self.left + theme.PAD + 26; self._text.y = line_y
+            self._text.draw()
+
+            self._text.font_size = theme.SIZE_BODY
+            self._text.color = theme.TEXT
+            self._text.text = value
+            self._text.x = self.left + theme.PAD + 106
             self._text.draw()
 
         # Track the bottom of the weather panel so info boxes can stack below it
-        window.weather_bottom = last_y - 20
+        window.weather_bottom = panel_bottom
 
 class LapTimeLeaderboardComponent(BaseComponent):
     def __init__(self, x: int, right_margin: int = 260, width: int = 240):
@@ -475,19 +506,6 @@ class QualifyingSegmentSelectorComponent(BaseComponent):
                     return True
         return True # Consume all clicks when visible
 
-# The panel has to hold a line like "Ahead (NOR): +0.73s (35.1m)" without it
-# running under the throttle and brake bars on the right, which is what
-# decides the width.
-DRIVER_PANEL_WIDTH = 296
-DRIVER_PANEL_HEIGHT = 244
-
-# The pedal bars occupy this much of the right-hand side, so nothing else may
-# extend past it.
-PEDAL_COLUMN_WIDTH = 75
-
-PORTRAIT_SIZE = 52
-
-
 class DriverInfoComponent(BaseComponent):
     def __init__(self, left=20, width=DRIVER_PANEL_WIDTH, min_top=220):
         self.left = left
@@ -515,7 +533,8 @@ class DriverInfoComponent(BaseComponent):
         # Tall enough for the speed trap row along the bottom.
         box_width, box_height, gap = self.width, DRIVER_PANEL_HEIGHT, 10
         weather_bottom = getattr(window, "weather_bottom", None)
-        current_top = weather_bottom - 20 if weather_bottom else window.height - 200
+        current_top = (weather_bottom - theme.GAP if weather_bottom
+                       else window.height - 200)
 
         for code in codes:
             if code not in frame["drivers"]: continue
@@ -590,19 +609,24 @@ class DriverInfoComponent(BaseComponent):
         top, bottom = center_y + box_height / 2, center_y - box_height / 2
         left, right = center_x - box_width / 2, center_x + box_width / 2
 
-        rect = arcade.XYWH(center_x, center_y, box_width, box_height)
-        arcade.draw_rect_filled(rect, (0, 0, 0, 200))
+        team_color = window.driver_colors.get(code, arcade.color.GRAY)
+
+        theme.draw_panel(left, bottom, right, top, fill=theme.SURFACE_RAISED)
         self._draw_speed_traps(window, code, left, bottom)
 
-        team_color = window.driver_colors.get(code, arcade.color.GRAY)
-        arcade.draw_rect_outline(rect, team_color, 2)
+        # The team colour reads as a marker down the edge rather than as a
+        # bright slab across the top, which shouted louder than the numbers.
+        arcade.draw_rect_filled(
+            arcade.XYWH(left + 3, center_y, 4, box_height - 22),
+            team_color[:3])
 
         header_height = 30
         header_cy = top - (header_height / 2)
-        arcade.draw_rect_filled(arcade.XYWH(center_x, header_cy, box_width, header_height), team_color)
-        arcade.Text(f"Driver: {code}", left + 10, header_cy, arcade.color.BLACK, 14, anchor_y="center",
+        arcade.Text(code, left + theme.PAD + 4, header_cy, team_color[:3],
+                    theme.SIZE_TITLE, anchor_y="center", bold=True).draw()
+        arcade.Text("DRIVER", left + theme.PAD + 46, header_cy,
+                    theme.TEXT_DIM, theme.SIZE_TINY, anchor_y="center",
                     bold=True).draw()
-        # After the header, so the header does not paint over the face.
         self._draw_portrait(code, right, top - header_height)
 
         cursor_y, row_gap = top - header_height - 25, 25

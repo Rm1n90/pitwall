@@ -57,6 +57,52 @@ def _fill_pill(center_x: float, center_y: float, width: float, height: float,
                            270, 450)
 
 
+def rounded_rect_geometry(left: float, bottom: float, right: float,
+                          top: float, radius: float):
+    """Return the parts that make up a rounded rectangle.
+
+    Two overlapping rectangles and four corner quarters. The corners are
+    quarter circles rather than whole ones for the same reason a pill's caps
+    are halves: a translucent colour blended twice shows the join.
+
+    Returns:
+        ``(horizontal_rect, vertical_rect, corners)`` where each rect is
+        ``(cx, cy, width, height)`` and each corner is
+        ``(cx, cy, radius, start_angle, end_angle)`` in degrees.
+    """
+    width = max(right - left, 0.0)
+    height = max(top - bottom, 0.0)
+    radius = float(min(radius, width / 2.0, height / 2.0))
+
+    horizontal = ((left + right) / 2.0, (bottom + top) / 2.0,
+                  width, max(height - radius * 2.0, 0.0))
+    vertical = ((left + right) / 2.0, (bottom + top) / 2.0,
+                max(width - radius * 2.0, 0.0), height)
+
+    corners = (
+        (left + radius, bottom + radius, radius, 180.0, 270.0),
+        (right - radius, bottom + radius, radius, 270.0, 360.0),
+        (right - radius, top - radius, radius, 0.0, 90.0),
+        (left + radius, top - radius, radius, 90.0, 180.0),
+    )
+    return horizontal, vertical, corners
+
+
+def draw_rounded_rect(left: float, bottom: float, right: float, top: float,
+                      radius: float, colour) -> None:
+    """Fill a rounded rectangle in one flat tone."""
+    horizontal, vertical, corners = rounded_rect_geometry(
+        left, bottom, right, top, radius)
+
+    if horizontal[3] > 0:
+        arcade.draw_rect_filled(arcade.XYWH(*horizontal), colour)
+    if vertical[2] > 0:
+        arcade.draw_rect_filled(arcade.XYWH(*vertical), colour)
+    for cx, cy, r, start, end in corners:
+        if r > 0:
+            arcade.draw_arc_filled(cx, cy, r * 2, r * 2, colour, start, end)
+
+
 def draw_tray(center_x: float, center_y: float, width: float, height: float,
               fill=TRAY_FILL, border=TRAY_BORDER) -> None:
     """Draw a pill-shaped tray for grouping round buttons.

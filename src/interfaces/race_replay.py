@@ -30,6 +30,7 @@ from src.render.cars import (
 #: What sits above the horizon in the three-dimensional view.
 SKY_COLOUR = (12, 13, 18, 255)
 
+from src.render import theme
 from src.lib import gap_history
 from src.lib.practice import is_practice, practice_label
 from src.render.timing_tower import TOWER_WIDTH, TimingTower
@@ -321,9 +322,13 @@ class F1RaceReplayWindow(arcade.Window):
         arcade.set_background_color(arcade.color.BLACK)
 
         # Persistent UI Text objects (avoid per-frame allocations)
-        self.lap_text = arcade.Text("", 20, self.height - 40, arcade.color.WHITE, 24, anchor_y="top")
-        self.time_text = arcade.Text("", 20, self.height - 80, arcade.color.WHITE, 20, anchor_y="top")
-        self.status_text = arcade.Text("", 20, self.height - 120, arcade.color.WHITE, 24, bold=True, anchor_y="top")
+        self.lap_text = arcade.Text("", 30, self.height - 40, theme.TEXT, 24,
+                                    anchor_y="top", bold=True)
+        self.time_text = arcade.Text("", 30, self.height - 76,
+                                     theme.TEXT_MUTED, 18, anchor_y="top")
+        self.status_text = arcade.Text("", 30, self.height - 112,
+                                       theme.TEXT, 20, bold=True,
+                                       anchor_y="top")
 
         # Trigger initial scaling calculation
         self.update_scaling(self.width, self.height)
@@ -1858,6 +1863,12 @@ class F1RaceReplayWindow(arcade.Window):
                 self.status_text.text = "SAFETY CAR"
                 self.status_text.color = arcade.color.BROWN
 
+            # A surface behind the clock, so it reads as part of the
+            # interface rather than as text lying on the circuit.
+            panel_top = self.height - 22
+            panel_bottom = panel_top - (128 if self.status_text.text else 92)
+            theme.draw_panel(14, panel_bottom, 14 + 296, panel_top)
+
             self.lap_text.draw()
             self.time_text.draw()
             if self.status_text.text:
@@ -1867,8 +1878,11 @@ class F1RaceReplayWindow(arcade.Window):
         weather_info = frame.get("weather") if frame else None
         self.weather_comp.set_info(weather_info)
         self.weather_comp.draw(self)
-        # optionally expose weather_bottom for driver info layout
-        self.weather_bottom = self.height - 170 - 130 if (weather_info or self.has_weather) else None
+        # The weather panel reports where it actually ends when it draws, so
+        # the driver panel can sit under it. A fixed guess here used to
+        # override that and put the driver panel over the last two readings.
+        if not (weather_info or self.has_weather):
+            self.weather_bottom = None
 
         # Draw leaderboard via component
         driver_list = []
