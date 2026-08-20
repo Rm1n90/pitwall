@@ -16,26 +16,58 @@ from src.render.cars import compound_color
 ROW_HEIGHT = 26
 HEADER_HEIGHT = 46
 
-# Column offsets from the left of the tower, in pixels.
+# Column offsets from the left of the tower, in pixels. They are spaced by
+# what the widest value in each column actually measures, not by eye: a
+# two-digit position and a three-letter code are wider than they look, and at
+# the old spacing the position ran into the change arrow and the code ran
+# into the sector bars, so HAD read as HAI.
+TOWER_WIDTH = 384
+
 COL_POSITION = 4
-COL_CHANGE = 24
-COL_CODE = 42
-COL_SECTORS = 76
-COL_GAP = 106
-COL_TYRE = 172
-COL_PITS = 212
-COL_STOP = 228
-COL_LAP = 272
+COL_CHANGE = 30
+COL_CODE = 58
+COL_SECTORS = 116
+COL_GAP = 152
+COL_TYRE = 212
+COL_PITS = 254
+COL_STOP = 282
+COL_LAP = 320
+
+# The widest thing each column ever has to draw, measured at the font size
+# and weight it is drawn in. Used by the tests that guard the spacing.
+COLUMN_CONTENT_WIDTHS = {
+    COL_POSITION: 24,   # "22" at 12pt bold, plus its 6px indent
+    COL_CHANGE: 22,     # arrow plus "12" at 9pt bold
+    COL_CODE: 51,       # "WWW" at 13pt bold
+    COL_SECTORS: 30,    # three bars and their gaps
+    COL_GAP: 53,        # "LEADER" at 11pt
+    COL_TYRE: 40,       # the compound circle plus "28"
+    COL_PITS: 17,       # the "PIT" heading, wider than the count below it
+    COL_STOP: 28,       # "25.4" at 10pt
+    COL_LAP: 56,        # "1:30.286" at 10pt
+}
 
 # Practice has no grid to compare against and no stops worth counting, so
 # the columns freed up go to the driver's best lap and how many laps they
 # have run.
-PRACTICE_COL_CODE = 30
-PRACTICE_COL_SECTORS = 66
-PRACTICE_COL_BEST = 100
-PRACTICE_COL_GAP = 166
-PRACTICE_COL_TYRE = 232
-PRACTICE_COL_LAPS = 280
+PRACTICE_COL_CODE = 36
+PRACTICE_COL_SECTORS = 96
+PRACTICE_COL_BEST = 134
+PRACTICE_COL_GAP = 200
+PRACTICE_COL_TYRE = 266
+PRACTICE_COL_LAPS = 316
+
+PRACTICE_COLUMN_CONTENT_WIDTHS = {
+    COL_POSITION: 24,
+    PRACTICE_COL_CODE: 51,
+    PRACTICE_COL_SECTORS: 30,
+    PRACTICE_COL_BEST: 56,    # "1:19.075" at 10pt
+    # The quickest driver's gap column shows their own lap time rather than
+    # a delta, so it is as wide as the best-lap column beside it.
+    PRACTICE_COL_GAP: 56,
+    PRACTICE_COL_TYRE: 40,
+    PRACTICE_COL_LAPS: 20,    # "30" at 11pt
+}
 
 BACKGROUND = (18, 19, 23, 210)
 ROW_ALTERNATE = (26, 28, 34, 150)
@@ -107,7 +139,8 @@ class TimingTower:
         visible: Whether to draw at all.
     """
 
-    def __init__(self, x: int, width: int = 260, visible: bool = True):
+    def __init__(self, x: int, width: int = TOWER_WIDTH,
+                 visible: bool = True):
         self.x = x
         self.width = width
         self._visible = visible
@@ -413,19 +446,27 @@ class TimingTower:
                        modifiers: int) -> bool:
         for code, left, bottom, right, top in self.rects:
             if left <= x <= right and bottom <= y <= top:
-                multi = bool(modifiers & arcade.key.MOD_SHIFT)
-                if multi:
-                    if code in self.selected:
-                        self.selected.remove(code)
-                    else:
-                        self.selected.append(code)
-                elif self.selected == [code]:
-                    self.selected = []
-                else:
-                    self.selected = [code]
-
-                window.selected_drivers = self.selected
-                window.selected_driver = \
-                    self.selected[-1] if self.selected else None
+                self.select(window, code,
+                            multi=bool(modifiers & arcade.key.MOD_SHIFT))
                 return True
         return False
+
+    def select(self, window, code: str, multi: bool = False) -> None:
+        """Add, remove or replace the selection, and tell the window.
+
+        Clicking a car on the track goes through here too, so selecting a
+        driver behaves the same wherever you click.
+        """
+        if multi:
+            if code in self.selected:
+                self.selected.remove(code)
+            else:
+                self.selected.append(code)
+        elif self.selected == [code]:
+            self.selected = []
+        else:
+            self.selected = [code]
+
+        window.selected_drivers = self.selected
+        window.selected_driver = \
+            self.selected[-1] if self.selected else None

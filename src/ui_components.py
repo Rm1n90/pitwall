@@ -474,8 +474,21 @@ class QualifyingSegmentSelectorComponent(BaseComponent):
                     return True
         return True # Consume all clicks when visible
 
+# The panel has to hold a line like "Ahead (NOR): +0.73s (35.1m)" without it
+# running under the throttle and brake bars on the right, which is what
+# decides the width.
+DRIVER_PANEL_WIDTH = 296
+DRIVER_PANEL_HEIGHT = 244
+
+# The pedal bars occupy this much of the right-hand side, so nothing else may
+# extend past it.
+PEDAL_COLUMN_WIDTH = 75
+
+PORTRAIT_SIZE = 52
+
+
 class DriverInfoComponent(BaseComponent):
-    def __init__(self, left=20, width=220, min_top=220):
+    def __init__(self, left=20, width=DRIVER_PANEL_WIDTH, min_top=220):
         self.left = left
         self.width = width
         self.min_top = min_top
@@ -499,7 +512,7 @@ class DriverInfoComponent(BaseComponent):
         frame = window.frames[idx]
 
         # Tall enough for the speed trap row along the bottom.
-        box_width, box_height, gap = self.width, 244, 10
+        box_width, box_height, gap = self.width, DRIVER_PANEL_HEIGHT, 10
         weather_bottom = getattr(window, "weather_bottom", None)
         current_top = weather_bottom - 20 if weather_bottom else window.height - 200
 
@@ -527,12 +540,16 @@ class DriverInfoComponent(BaseComponent):
         return texture
 
     def _draw_portrait(self, code, right, top):
-        """Draw the driver's face in the corner of their panel."""
+        """Draw the driver's face in the corner of their panel.
+
+        Called after the coloured header is filled in, or the header paints
+        over the top of it and only the driver's chin is left showing.
+        """
         texture = self._portrait_texture(code)
         if texture is None:
             return
-        size = 46
-        rect = arcade.XYWH(right - size / 2 - 6, top - size / 2 - 6,
+        size = PORTRAIT_SIZE
+        rect = arcade.XYWH(right - size / 2 - 8, top - size / 2 - 4,
                            size, size)
         arcade.draw_texture_rect(rect=rect, texture=texture)
 
@@ -574,7 +591,6 @@ class DriverInfoComponent(BaseComponent):
 
         rect = arcade.XYWH(center_x, center_y, box_width, box_height)
         arcade.draw_rect_filled(rect, (0, 0, 0, 200))
-        self._draw_portrait(code, right, top)
         self._draw_speed_traps(window, code, left, bottom)
 
         team_color = window.driver_colors.get(code, arcade.color.GRAY)
@@ -585,6 +601,8 @@ class DriverInfoComponent(BaseComponent):
         arcade.draw_rect_filled(arcade.XYWH(center_x, header_cy, box_width, header_height), team_color)
         arcade.Text(f"Driver: {code}", left + 10, header_cy, arcade.color.BLACK, 14, anchor_y="center",
                     bold=True).draw()
+        # After the header, so the header does not paint over the face.
+        self._draw_portrait(code, right, top - header_height)
 
         cursor_y, row_gap = top - header_height - 25, 25
         left_text_x = left + 15
@@ -661,7 +679,10 @@ class DriverInfoComponent(BaseComponent):
                     cursor_y -= 28  # Space before health bar
                     
                     # Draw tyre health bar
-                    bar_params = format_tyre_health_bar(health_data['health'], width=180, height=14)
+                    # Stop short of the pedal bars on the right.
+                    bar_width = (box_width - PEDAL_COLUMN_WIDTH - 15 - 12)
+                    bar_params = format_tyre_health_bar(
+                        health_data['health'], width=bar_width, height=14)
                     bar_x = left + 15
                     bar_y = cursor_y
                     
@@ -701,7 +722,7 @@ class DriverInfoComponent(BaseComponent):
         thr, brk = driver_pos.get('throttle', 0), driver_pos.get('brake', 0)
         t_r, b_r = max(0.0, min(1.0, thr / 100.0)), max(0.0, min(1.0, brk / 100.0 if brk > 1.0 else brk))
         bar_w, bar_h, b_y = 20, 80, bottom + 35
-        r_center = right - 50
+        r_center = right - PEDAL_COLUMN_WIDTH / 2 - 12
 
         # Throttle
         arcade.Text("THR", r_center - 15, b_y - 20, arcade.color.WHITE, 10, anchor_x="center").draw()

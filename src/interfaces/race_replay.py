@@ -24,10 +24,12 @@ from src.lib.flag_sectors import (
 )
 from src.lib.lap_history import LapHistory
 from src.lib.speed_traps import from_lap_times as speed_traps_from_lap_times
-from src.render.cars import draw_car, draw_label, draw_safety_car
+from src.render.cars import (
+    draw_car, draw_label, draw_safety_car, driver_at,
+)
 from src.lib import gap_history
 from src.lib.practice import is_practice, practice_label
-from src.render.timing_tower import TimingTower
+from src.render.timing_tower import TOWER_WIDTH, TimingTower
 from src.render.track import TrackRenderer, corner_labels_from_circuit_info
 from src.tyre_degradation_integration import TyreDegradationIntegrator
 from src.services.stream import TelemetryStreamServer
@@ -46,7 +48,7 @@ BOTTOM_UI_MARGIN = 120
 class F1RaceReplayWindow(arcade.Window):
     def __init__(self, frames, track_statuses, example_lap, drivers, title,
                  playback_speed=1.0, driver_colors=None, circuit_rotation=0.0,
-                 left_ui_margin=340, right_ui_margin=376, total_laps=None,
+                 left_ui_margin=340, right_ui_margin=420, total_laps=None,
                  session_type="R", visible_hud=True,
                  session_info=None, session=None, enable_telemetry=False,
                  race_control_messages=None, live_engine=None,
@@ -132,7 +134,8 @@ class F1RaceReplayWindow(arcade.Window):
         self.show_driver_labels = False
         # UI components
         leaderboard_x = max(20, self.width - self.right_ui_margin + 12)
-        self.leaderboard_comp = TimingTower(x=leaderboard_x, width=336, visible=visible_hud)
+        self.leaderboard_comp = TimingTower(x=leaderboard_x, width=TOWER_WIDTH,
+                                            visible=visible_hud)
         self.leaderboard_comp.pit_times = pit_stop_times or {}
         self.team_radio = team_radio or []
         self.weather_comp = WeatherComponent(left=20, top_offset=170, visible=visible_hud)
@@ -1928,8 +1931,37 @@ class F1RaceReplayWindow(arcade.Window):
             return
         if self.legend_comp.on_mouse_press(self, x, y, button, modifiers):
             return
+
+        code = self._driver_at(x, y)
+        if code is not None:
+            self.leaderboard_comp.select(
+                self, code, multi=bool(modifiers & arcade.key.MOD_SHIFT))
+            return
+
         # default: clear selection if clicked elsewhere
+        self.selected_drivers = []
         self.selected_driver = None
+        self.leaderboard_comp.selected = []
+
+    def _driver_at(self, x: float, y: float):
+        """Return the driver whose car is under a point on screen, if any."""
+        if not self.frames:
+            return None
+        index = min(int(self.frame_index), max(0, self.n_frames - 1))
+        try:
+            drivers = self.frames[index]["drivers"]
+        except (IndexError, KeyError, TypeError):
+            return None
+
+        on_screen = []
+        for code, car in drivers.items():
+            if car.get("retired"):
+                continue
+            car_x, car_y = car.get("x"), car.get("y")
+            if car_x is None or car_y is None:
+                continue
+            on_screen.append((code, *self.world_to_screen(car_x, car_y)))
+        return driver_at(on_screen, x, y)
         
     def on_mouse_motion(self, x: float, y: float, dx: float, dy: float):
         """Handle mouse motion for hover effects on progress bar and controls."""

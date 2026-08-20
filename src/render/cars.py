@@ -122,3 +122,32 @@ def draw_safety_car(screen_x: float, screen_y: float, phase: str,
         arcade.draw_text(caption, screen_x, screen_y - 18,
                          (255, 200, 0, int(200 * alpha)), 8,
                          anchor_x="center", anchor_y="top", bold=True)
+
+
+# A car is a small dot, so a click has to be forgiving. This is a little
+# wider than the selection ring drawn around a chosen car.
+CLICK_RADIUS = 14.0
+
+
+def driver_at(positions, x: float, y: float, radius: float = CLICK_RADIUS):
+    """Return the code of the car nearest a point on screen, if any is close.
+
+    Args:
+        positions: ``(code, screen_x, screen_y)`` for every car on track.
+        x: Click position in screen pixels.
+        y: Click position in screen pixels.
+        radius: How near the click has to land.
+
+    Returns:
+        The driver code, or ``None`` if the click missed everyone. At the
+        start the whole field is a few pixels apart, so the nearest car wins.
+    """
+    nearest = None
+    closest = radius * radius
+    for code, car_x, car_y in positions:
+        if car_x is None or car_y is None:
+            continue
+        distance = (car_x - x) ** 2 + (car_y - y) ** 2
+        if distance <= closest:
+            nearest, closest = code, distance
+    return nearest

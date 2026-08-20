@@ -135,3 +135,76 @@ class TestPracticeMode:
         assert "PIT" in race and "STOP" in race
         assert "PIT" not in practice and "STOP" not in practice
         assert "BEST" in practice and "LAPS" in practice
+
+
+class TestColumnSpacing:
+    """Columns must not run into each other.
+
+    Before this was checked, a two-digit position ran into the change arrow
+    and a three-letter code ran into the sector bars, so HAD read as HAI.
+    """
+
+    # Measured at 8pt bold, the size the headings are drawn in. A heading can
+    # be wider than the values beneath it, and two headings three pixels
+    # apart read as one word.
+    HEADER_WIDTHS = {
+        "SECT": 25, "GAP": 22, "TYRE": 26, "PIT": 17, "STOP": 28,
+        "LAST": 25, "BEST": 25, "LAPS": 26,
+    }
+    MIN_HEADER_CLEARANCE = 8
+
+    def _assert_no_overlap(self, widths, tower_width):
+        columns = sorted(widths)
+        for offset, next_offset in zip(columns, columns[1:]):
+            end = offset + widths[offset]
+            assert end <= next_offset, (
+                f"column at {offset} ends at {end}, "
+                f"running into the column at {next_offset}")
+
+        last = columns[-1]
+        assert last + widths[last] <= tower_width, "the last column overflows"
+
+    def test_race_columns_do_not_overlap(self):
+        from src.render.timing_tower import (
+            COLUMN_CONTENT_WIDTHS, TOWER_WIDTH,
+        )
+        self._assert_no_overlap(COLUMN_CONTENT_WIDTHS, TOWER_WIDTH)
+
+    def test_practice_columns_do_not_overlap(self):
+        from src.render.timing_tower import (
+            PRACTICE_COLUMN_CONTENT_WIDTHS, TOWER_WIDTH,
+        )
+        self._assert_no_overlap(PRACTICE_COLUMN_CONTENT_WIDTHS, TOWER_WIDTH)
+
+    def _assert_headers_are_readable(self, tower):
+        labels = sorted(tower.header_labels())
+        for (offset, label), (next_offset, _) in zip(labels, labels[1:]):
+            end = offset + self.HEADER_WIDTHS[label]
+            assert end + self.MIN_HEADER_CLEARANCE <= next_offset, (
+                f"the {label} heading ends at {end} and the next begins at "
+                f"{next_offset}, so they read as one word")
+
+    def test_race_headers_stay_apart(self):
+        from src.render.timing_tower import TimingTower
+        self._assert_headers_are_readable(TimingTower(x=0))
+
+    def test_practice_headers_stay_apart(self):
+        from src.render.timing_tower import TimingTower
+        tower = TimingTower(x=0)
+        tower.practice_mode = True
+        self._assert_headers_are_readable(tower)
+
+    def test_every_race_header_sits_over_its_column(self):
+        from src.render.timing_tower import COLUMN_CONTENT_WIDTHS, TimingTower
+        tower = TimingTower(x=0)
+        for offset, _label in tower.header_labels():
+            assert offset in COLUMN_CONTENT_WIDTHS
+
+    def test_every_practice_header_sits_over_its_column(self):
+        from src.render.timing_tower import (
+            PRACTICE_COLUMN_CONTENT_WIDTHS, TimingTower,
+        )
+        tower = TimingTower(x=0)
+        tower.practice_mode = True
+        for offset, _label in tower.header_labels():
+            assert offset in PRACTICE_COLUMN_CONTENT_WIDTHS
