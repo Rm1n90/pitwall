@@ -296,7 +296,14 @@ Thanks to @el-mandaloriano for showing how to resolve this issue: #12
 
 ## 📝 License
 
-This project is licensed under the MIT License.
+This project is licensed under the MIT License — see [LICENSE](./LICENSE).
+
+## Credits
+
+This is a fork of [IAmTomShaw/f1-race-replay](https://github.com/IAmTomShaw/f1-race-replay)
+by [Tom Shaw](https://tomshaw.dev), with the full history of its community
+contributors preserved. See [contributors.md](./contributors.md) for the people
+whose work this builds on.
 
 ## ⚠️ Disclaimer
 
