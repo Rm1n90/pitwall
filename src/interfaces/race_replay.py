@@ -37,7 +37,7 @@ BOTTOM_UI_MARGIN = 120
 class F1RaceReplayWindow(arcade.Window):
     def __init__(self, frames, track_statuses, example_lap, drivers, title,
                  playback_speed=1.0, driver_colors=None, circuit_rotation=0.0,
-                 left_ui_margin=340, right_ui_margin=360, total_laps=None, visible_hud=True,
+                 left_ui_margin=340, right_ui_margin=376, total_laps=None, visible_hud=True,
                  session_info=None, session=None, enable_telemetry=False,
                  race_control_messages=None, live_engine=None,
                  circuit_info=None, pit_lane=None, pit_stop_times=None):
@@ -109,7 +109,7 @@ class F1RaceReplayWindow(arcade.Window):
         self.show_driver_labels = False
         # UI components
         leaderboard_x = max(20, self.width - self.right_ui_margin + 12)
-        self.leaderboard_comp = TimingTower(x=leaderboard_x, width=320, visible=visible_hud)
+        self.leaderboard_comp = TimingTower(x=leaderboard_x, width=336, visible=visible_hud)
         self.leaderboard_comp.pit_times = pit_stop_times or {}
         self.weather_comp = WeatherComponent(left=20, top_offset=170, visible=visible_hud)
         self.legend_comp = LegendComponent(x=max(12, self.left_ui_margin - 320), visible=visible_hud)
@@ -481,8 +481,18 @@ class F1RaceReplayWindow(arcade.Window):
                     is_out_lap = False
                     if "PitOutTime" in session.laps.columns and pd.notna(row.get("PitOutTime")):
                         is_out_lap = True
-                        
+
+                    # Sector times, so the tower can colour each sector by
+                    # whether it was a personal or overall best.
+                    sectors = {}
+                    for number in (1, 2, 3):
+                        value = row.get(f"Sector{number}Time")
+                        sectors[f"sector{number}_s"] = (
+                            value.total_seconds() if pd.notna(value) else None
+                        )
+
                     result.setdefault(code, []).append({
+                        **sectors,
                         "lap": int(lap_num),
                         "time_s": float(time_s),
                         "end_time_s": float(end_time_s) if end_time_s is not None else None,
@@ -1596,6 +1606,7 @@ class F1RaceReplayWindow(arcade.Window):
         tower.session_best = history["session_best"]
         tower.session_best_code = history["session_best_code"]
         tower.grid_positions = self.grid_positions
+        tower.sectors = history.get("sectors", {})
         leader = driver_list[0][0] if driver_list else None
         tower.reference_lap_s = (
             history["last_laps"].get(leader)

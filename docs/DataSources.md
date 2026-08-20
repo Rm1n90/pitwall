@@ -57,13 +57,29 @@ These arrive in every session and cost nothing extra.
 
 | Field | Where | What it would give us |
 |-------|-------|-----------------------|
-| **Mini-sector segments** | `TimingData.Lines[car].Sectors[].Segments[].Status` | The circuit split into 22 timed segments (7 + 9 + 6 at the Hungaroring), each with a status per driver. This is what drives the coloured mini-sector map in F1's own app. Observed status codes are `0`, `2048`, `2049`, `2052`, `2064`; the mapping to yellow/green/purple needs confirming against a qualifying session before it is used for colour. |
+| **Mini-sector segments** | `TimingData.Lines[car].Sectors[].Segments[].Status` | The circuit split into 22 timed segments (7 + 9 + 6 at the Hungaroring), each with a status per driver. Colouring the *map* by segment additionally needs a mapping from segment index to track position, which nothing publishes; the same information is used in the timing tower instead. |
 | **Speed traps** | `TimingData.Lines[car].Speeds` | `I1`, `I2`, `FL`, `ST` speeds with personal and overall best flags |
 | **Sector times** | `TimingData.Lines[car].Sectors[].Value` | Live sector times with best-of-session flags |
 | **Headshots and country** | `DriverList[car].HeadshotUrl`, `CountryCode` | Driver portraits and flags in the leaderboard |
 | **Corner positions** | FastF1 `session.get_circuit_info().corners` | 16 corners with coordinates, numbers and letters — corner labels on the map |
 | **Marshal sectors** | FastF1 `get_circuit_info().marshal_sectors` | 19 marshal sectors with coordinates. Combined with the sector referenced in a yellow-flag race control message, we could highlight *exactly* the stretch of track that is under a flag. |
 | **Elevation** | `Z` in the position feed | Circuits are not flat. Z is already decoded and thrown away. |
+
+## Mini-sector status codes
+
+Nothing documents these, so they were derived by correlating each segment's
+status with whether the sector it belonged to turned out to be a personal or
+overall best, across a full qualifying session (5,774 samples).
+
+| Code | Share of overall bests | Share of normal sectors | Meaning |
+|------|-----------------------|-------------------------|---------|
+| `2051` | 50% | 1% | Overall fastest — purple |
+| `2049` | 41% | 7% | Personal best — green |
+| `2048` | 9% | 84% | Slower — yellow |
+| `2064` | — | 8% | Pit lane, or not timed |
+
+An overall-best sector contains a mix of `2051` and `2049` because individual
+segments within it can be personal rather than overall bests.
 
 ## Other APIs
 

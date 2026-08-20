@@ -20,11 +20,12 @@ HEADER_HEIGHT = 46
 COL_POSITION = 4
 COL_CHANGE = 24
 COL_CODE = 42
-COL_GAP = 92
-COL_TYRE = 158
-COL_PITS = 198
-COL_STOP = 214
-COL_LAP = 258
+COL_SECTORS = 76
+COL_GAP = 106
+COL_TYRE = 172
+COL_PITS = 212
+COL_STOP = 228
+COL_LAP = 272
 
 BACKGROUND = (18, 19, 23, 210)
 ROW_ALTERNATE = (26, 28, 34, 150)
@@ -39,6 +40,12 @@ PURPLE = (176, 84, 236)
 PERSONAL_BEST = (86, 200, 110)
 PIT_COLOR = (240, 176, 64)
 RETIRED_COLOR = (150, 60, 60)
+
+# Sector status, in the order the lap history reports it.
+SECTOR_COLORS = ((214, 200, 60), (86, 200, 110), (176, 84, 236))
+SECTOR_BAR_WIDTH = 7
+SECTOR_BAR_GAP = 3
+SECTOR_BAR_HEIGHT = 4
 
 # Used when the leader's own lap time is not yet known.
 FALLBACK_LAP_TIME_S = 92.0
@@ -100,6 +107,8 @@ class TimingTower:
         self.personal_bests: Dict[str, float] = {}
         #: ``{code: [PitStop, ...]}``, for the stationary time in the box.
         self.pit_times: Dict[str, List] = {}
+        #: ``{code: [s1, s2, s3]}`` status of each driver's last sectors.
+        self.sectors: Dict[str, List[int]] = {}
         #: Leader's most recent lap time, used to turn part-laps into seconds.
         self.reference_lap_s: float = FALLBACK_LAP_TIME_S
 
@@ -158,7 +167,8 @@ class TimingTower:
     def _draw_header(self, top: float) -> None:
         arcade.Text("TIMING", self.x, top, TEXT_COLOR, 15, bold=True,
                     anchor_x="left", anchor_y="top").draw()
-        labels = ((COL_GAP, "GAP"), (COL_TYRE, "TYRE"), (COL_PITS, "PIT"),
+        labels = ((COL_SECTORS, "SECT"), (COL_GAP, "GAP"),
+                  (COL_TYRE, "TYRE"), (COL_PITS, "PIT"),
                   (COL_STOP, "STOP"), (COL_LAP, "LAST"))
         for offset, label in labels:
             arcade.Text(label, self.x + offset, top - 24, HEADER_COLOR, 8,
@@ -193,6 +203,7 @@ class TimingTower:
         self._draw_change(code, car, text_y)
         self._text(code, COL_CODE, text_y,
                    MUTED_COLOR if retired else color[:3], 13, bold=True)
+        self._draw_sectors(code, text_y, retired)
 
         if retired:
             self._text("OUT", COL_GAP, text_y, RETIRED_COLOR, 11, bold=True)
@@ -210,6 +221,27 @@ class TimingTower:
         self._draw_stop_time(code, car, text_y)
 
         self._draw_last_lap(code, text_y, retired)
+
+    def _draw_sectors(self, code: str, text_y: float, retired: bool) -> None:
+        """Draw three bars showing how the driver's last sectors went.
+
+        Purple for the fastest anyone has managed, green for the driver's own
+        best, and yellow otherwise, as a broadcast tower shows them.
+        """
+        statuses = self.sectors.get(code) or [0, 0, 0]
+        for index, status in enumerate(statuses[:3]):
+            left = self.x + COL_SECTORS + index * (
+                SECTOR_BAR_WIDTH + SECTOR_BAR_GAP)
+            try:
+                color = SECTOR_COLORS[int(status)]
+            except (TypeError, ValueError, IndexError):
+                color = SECTOR_COLORS[0]
+            if retired:
+                color = (70, 72, 80)
+            arcade.draw_lrbt_rectangle_filled(
+                left, left + SECTOR_BAR_WIDTH,
+                text_y - SECTOR_BAR_HEIGHT / 2,
+                text_y + SECTOR_BAR_HEIGHT / 2, color)
 
     def _draw_change(self, code: str, car: dict, text_y: float) -> None:
         """Show places gained or lost against the starting grid."""
