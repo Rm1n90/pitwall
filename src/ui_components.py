@@ -1,4 +1,5 @@
 import arcade
+from src.render.shapes import draw_tray
 from typing import List, Literal, Tuple, Optional
 from typing import Sequence, Optional, Tuple
 from src.lib.time import format_time
@@ -1571,9 +1572,10 @@ class RaceControlsComponent(BaseComponent):
                 container_width = self.button_size * 3.6
             container_height = self.button_size * 1.2
             
-            # Draw container background box
-            rect_container = arcade.XYWH(x, y, container_width, container_height)
-            arcade.draw_rect_filled(rect_container, (40, 40, 40, 200))
+            # A tray to group the speed controls. Round, because everything
+            # else on this bar is round and a square slab among circles looks
+            # like something nobody finished.
+            draw_tray(x, y, container_width, container_height)
 
             # Button positions inside container
             button_offset = (container_width / 2) - (self.button_size / 2) - 5
