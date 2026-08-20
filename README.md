@@ -1,12 +1,24 @@
-# F1 Race Replay 🏎️ 🏁
+# Pitwall 🏁
 
-A Python application for visualizing Formula 1 race telemetry and replaying race events with interactive controls and a graphical interface.
+**Your own pit wall for motorsport telemetry.** Watch a session live as it
+happens, or replay a past one — cars moving on the circuit, a running
+leaderboard, tyre strategy, weather and full driver telemetry, all in one
+window.
 
-![Race Replay Preview](./resources/preview.png)
+Formula 1 is supported today. MotoGP and other series are next.
 
-> **HUGE NEWS:** The telemetry stream feature is now in a usable state. See the [telemetry demo documentation](./telemetry.md) for access instructions, data format details, and usage ideas.
+![Pitwall preview](./resources/preview.png)
 
-> **NEW — Live Mode 🔴:** Watch a session *while it is happening*. Run `python main.py --live` (or click **WATCH LIVE** in the session picker) and the cars appear on track within a couple of seconds of the real thing — usually ahead of the TV broadcast. See [docs/LiveMode.md](./docs/LiveMode.md).
+```bash
+python main.py --live     # follow the session running right now
+python main.py            # pick any past session from the GUI
+```
+
+> **🔴 Live Mode** puts cars on track within a couple of seconds of the real
+> thing — usually *ahead* of the TV broadcast. See [docs/LiveMode.md](./docs/LiveMode.md).
+
+> **📡 Telemetry stream** broadcasts every frame over a local socket so you can
+> build your own dashboards alongside the replay. See [telemetry.md](./telemetry.md).
 
 ## Features
 
@@ -108,7 +120,7 @@ Recently added support for Qualifying session replays with telemetry visualizati
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.11+ (CI covers 3.10–3.12)
 - [FastF1](https://github.com/theOehrly/Fast-F1)
 - [Arcade](https://api.arcade.academy/en/latest/)
 - numpy
@@ -127,8 +139,8 @@ To get started with this project locally, you can follow these steps:
 
 1. **Clone the Repository:**
    ```bash
-   git clone https://github.com/IAmTomShaw/f1-race-replay
-    cd f1-race-replay
+   git clone https://github.com/Rm1n90/pitwall
+    cd pitwall
     ```
 2. **Create a Virtual Environment:**
     This process differs based on your operating system.
@@ -212,25 +224,36 @@ python main.py --viewer --year 2025 --round 12 --qualifying --sprint
 ## File Structure
 
 ```
-f1-race-replay/
-├── main.py                    # Entry point, handles session loading and starts the replay
-├── requirements.txt           # Python dependencies
-├── README.md                  # Project documentation
-├── roadmap.md                 # Planned features and project vision
-├── resources/
-│   └── preview.png           # Race replay preview image
+pitwall/
+├── main.py                     # Entry point and CLI
+├── docs/
+│   ├── LiveMode.md             # Live sessions: sources, latency, troubleshooting
+│   ├── PitWallWindow.md        # Building custom telemetry windows
+│   └── InsightsMenu.md         # Adding entries to the insights menu
 ├── src/
-│   ├── f1_data.py            # Telemetry loading, processing, frame generation & SC position simulation
-│   ├── arcade_replay.py      # Visualization and UI logic
-│   └── ui_components.py      # UI components like buttons and leaderboard
+│   ├── f1_data.py              # Telemetry loading, frame generation, SC simulation
+│   ├── ui_components.py        # Leaderboard, weather, progress bar, controls
+│   ├── run_session.py          # Window launcher
+│   ├── live/                   # Live sessions
+│   │   ├── engine.py           #   render clock and frame production
+│   │   ├── state.py            #   accumulated session state from the feeds
+│   │   ├── frame_builder.py    #   live state -> replay frames
+│   │   ├── decoding.py         #   feed parsing and .z decompression
+│   │   ├── projection.py       #   car coordinates -> position along the lap
+│   │   ├── schedule.py         #   which session is live right now
+│   │   ├── track_reference.py  #   cached circuit geometry
+│   │   └── sources/            #   SignalR, static archive, simulated
 │   ├── interfaces/
-│   │   └── qualifying.py     # Qualifying session interface and telemetry visualization
-│   │   └── race_replay.py    # Race replay interface, SC rendering & telemetry visualization
-│   └── lib/
-│       └── tyres.py          # Type definitions for telemetry data structures
-│       └── time.py           # Time formatting utilities
-└── .fastf1-cache/            # FastF1 cache folder (created automatically upon first run)
-└── computed_data/            # Computed telemetry data (created automatically upon first run)
+│   │   ├── race_replay.py      # Race replay window
+│   │   ├── live_mode.py        # Live playback behaviour for that window
+│   │   └── qualifying.py       # Qualifying session interface
+│   ├── insights/               # Telemetry, tyre strategy, lap charts, track map
+│   ├── gui/                    # Session picker, settings, insights menu
+│   ├── services/stream.py      # Telemetry broadcast socket
+│   └── lib/                    # Tyres, time formatting, settings
+├── tests/                      # pytest suite
+├── .fastf1-cache/              # FastF1 cache (created on first run)
+└── computed_data/              # Computed telemetry and caches (created on first run)
 ```
 
 ## Building Custom Telemetry Windows
@@ -272,14 +295,15 @@ The `PitWallWindow` base class handles all telemetry stream connection logic aut
 
 ## Contributing
 
-There have been several contributions from the community that have helped enhance this project. I have added a [contributors.md](./contributors.md) file to acknowledge those who have contributed features and improvements.
+Contributions are welcome — issues, ideas and pull requests alike.
 
-If you would like to contribute, feel free to:
+- Keep a pull request focused on one feature or fix.
+- Run `python -m pytest` before opening it; CI runs the same suite.
+- Include a screenshot or short recording for anything visual.
 
-- Open pull requests for UI improvements or new features.
-- Report issues on GitHub.
-
-Please see [roadmap.md](./roadmap.md) for planned features and project vision.
+See [roadmap.md](./roadmap.md) for where the project is heading, and
+[contributors.md](./contributors.md) for the people whose work is already in
+here.
 
 # Known Issues
 
@@ -296,14 +320,11 @@ Thanks to @el-mandaloriano for showing how to resolve this issue: #12
 
 ## 📝 License
 
-This project is licensed under the MIT License — see [LICENSE](./LICENSE).
+MIT — see [LICENSE](./LICENSE).
 
-## Credits
-
-This is a fork of [IAmTomShaw/f1-race-replay](https://github.com/IAmTomShaw/f1-race-replay)
-by [Tom Shaw](https://tomshaw.dev), with the full history of its community
-contributors preserved. See [contributors.md](./contributors.md) for the people
-whose work this builds on.
+Pitwall builds on an MIT-licensed open-source codebase; the original copyright
+notice is preserved in the licence file, as MIT requires. Everyone whose work is
+in here is listed in [contributors.md](./contributors.md).
 
 ## ⚠️ Disclaimer
 
@@ -311,4 +332,4 @@ No copyright infringement intended. Formula 1 and related trademarks are the pro
 
 ---
 
-Built with ❤️ by [Tom Shaw](https://tomshaw.dev)
+Built and maintained by [Armin](https://github.com/Rm1n90)

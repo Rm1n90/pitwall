@@ -388,7 +388,7 @@ class LapTimeChartWindow(PitWallWindow):
         self._view_refresh_timer.setSingleShot(True)
         self._view_refresh_timer.timeout.connect(self._refresh_after_view_change)
 
-        self.setWindowTitle("F1 Race Replay - Lap Time & Gap Evolution")
+        self.setWindowTitle("Pitwall - Lap Time & Gap Evolution")
         self.setGeometry(120, 120, 1000, 600)
         
         self.status_bar.setStyleSheet("""

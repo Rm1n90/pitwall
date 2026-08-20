@@ -1,12 +1,15 @@
 # Contributors
 
-This project started with my own efforts, but it's feature list has grown thanks to the contributions of others. I want to make sure to acknowledge those who have helped improve and expand this project over time.
+Pitwall builds on the work of a lot of people. This file records the features
+contributed by others that are still part of the project today.
 
-Thanks to the people who have helped build this project:
+- [@saikasticguy](https://github.com/saikasticguy) — weather telemetry
+- [@matthewdotpy](https://github.com/matthewdotpy) — much faster data fetching (roughly 3x)
+- [@NikosEvan](https://github.com/NikosEvan) — lap counter
+- [@bastuckn](https://github.com/bastuckn) — playback speed indicator
+- [@nitai-satapathy](https://github.com/nitai-satapathy) — sprint session support
+- [@AyushmanMalla](https://github.com/AyushmanMalla) — resizeable window
 
-- [@saikasticguy](https://github.com/saikasticguy) - Created the weather telemetry feature.
-- [@matthewdotpy](https://github.com/matthewdotpy) - Updated the data fetching logic for much faster performance. (seriously, like 3x faster!)
-- [@NikosEvan](https://github.com/NikosEvan) - Added the lap counter feature.
-- [@bastuckn](https://github.com/bastuckn) - Added the playback speed indicator.
-- [@nitai-satapathy](https://github.com/nitai-satapathy) - Added the sprint session support for the race replay window.
-- [@AyushmanMalla](https://github.com/AyushmanMalla) - Added the resizeable window feature.
+Plus everyone whose commits are in the git history of this repository, and the
+maintainers of [FastF1](https://github.com/theOehrly/Fast-F1), without which
+none of this would exist.
