@@ -204,3 +204,48 @@ class Camera3D:
             (ndc[:, 1] * 0.5 + 0.5) * height,
         ])
         return screen, w, visible
+
+
+#: How the camera follows the session.
+MODE_FREE = "free"
+MODE_CHASE = "chase"
+MODE_TRACK = "track"
+CAMERA_MODES = (MODE_FREE, MODE_CHASE, MODE_TRACK)
+
+#: Chase camera: close behind the car and only slightly above it.
+CHASE_DISTANCE_M = 46.0
+CHASE_PITCH = np.deg2rad(15.0)
+
+#: Tracking camera: further out and higher, like a camera on a gantry.
+TRACK_DISTANCE_M = 130.0
+TRACK_PITCH = np.deg2rad(26.0)
+
+#: How quickly the camera catches up with the car it is following. A camera
+#: pinned exactly to the car shakes with every jitter in the position feed.
+FOLLOW_SMOOTHING = 0.12
+
+
+def next_mode(mode: str) -> str:
+    """The mode after this one, wrapping around."""
+    try:
+        return CAMERA_MODES[(CAMERA_MODES.index(mode) + 1) % len(CAMERA_MODES)]
+    except ValueError:
+        return MODE_FREE
+
+
+def smooth_towards(current, target, factor: float = FOLLOW_SMOOTHING):
+    """Move part of the way from one point to another."""
+    current = np.asarray(current, dtype=float)
+    target = np.asarray(target, dtype=float)
+    return current + (target - current) * float(np.clip(factor, 0.0, 1.0))
+
+
+def smooth_angle_towards(current: float, target: float,
+                         factor: float = FOLLOW_SMOOTHING) -> float:
+    """Move part of the way between two angles, the short way round.
+
+    Following a car through the last corner of a lap must not send the
+    camera the long way round when the heading crosses from pi to -pi.
+    """
+    difference = (float(target) - float(current) + np.pi) % (2 * np.pi) - np.pi
+    return float(current) + difference * float(np.clip(factor, 0.0, 1.0))

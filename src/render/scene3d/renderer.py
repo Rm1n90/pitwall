@@ -33,8 +33,18 @@ FLAG_YELLOW = (0.84, 0.78, 0.24)
 APRON_WIDTH_FACTOR = 2.6
 
 #: A car drawn to scale on a circuit a kilometre and a half across is three
-#: pixels long. Broadcast graphics oversize them and so does this.
-DEFAULT_CAR_SCALE = 7.0
+#: pixels long, so from far away the cars are drawn larger than life. From
+#: close up they are not: a car the size of a grandstand looks absurd.
+MIN_CAR_SCALE = 1.0
+MAX_CAR_SCALE = 6.5
+CAR_SCALE_DISTANCE_M = 210.0
+DEFAULT_CAR_SCALE = 4.0
+
+
+def car_scale_for_distance(distance_m: float) -> float:
+    """How much to oversize the cars, given how far away the camera is."""
+    scale = float(distance_m) / CAR_SCALE_DISTANCE_M
+    return float(np.clip(scale, MIN_CAR_SCALE, MAX_CAR_SCALE))
 
 #: Per instance: where it is, which way it points, its colour, its size.
 INSTANCE_FLOATS = 8

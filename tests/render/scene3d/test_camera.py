@@ -223,3 +223,62 @@ class TestFramingAroundPanels:
         screen, _depth, _visible = camera.project(points, 1600, 900)
         assert (np.abs(screen[:, 0] / 1600 * 2 - 1) <= 0.56).all()
         assert (np.abs(screen[:, 1] / 900 * 2 - 1) <= 0.76).all()
+
+
+class TestCameraModes:
+    def test_the_modes_cycle(self):
+        from src.render.scene3d.camera import (
+            CAMERA_MODES, MODE_FREE, next_mode,
+        )
+        mode = MODE_FREE
+        seen = []
+        for _ in range(len(CAMERA_MODES)):
+            seen.append(mode)
+            mode = next_mode(mode)
+
+        assert sorted(seen) == sorted(CAMERA_MODES)
+        assert mode == MODE_FREE
+
+    def test_an_unknown_mode_falls_back_to_free(self):
+        from src.render.scene3d.camera import MODE_FREE, next_mode
+        assert next_mode("nonsense") == MODE_FREE
+
+
+class TestSmoothing:
+    """A camera pinned exactly to a car shakes with the position feed."""
+
+    def test_it_moves_towards_the_target(self):
+        from src.render.scene3d.camera import smooth_towards
+        out = smooth_towards([0.0, 0.0, 0.0], [10.0, 0.0, 0.0], 0.5)
+        assert out.tolist() == [5.0, 0.0, 0.0]
+
+    def test_it_arrives_eventually(self):
+        from src.render.scene3d.camera import smooth_towards
+        position = np.zeros(3)
+        for _ in range(200):
+            position = smooth_towards(position, [10.0, 2.0, -4.0], 0.2)
+        assert np.allclose(position, [10.0, 2.0, -4.0], atol=0.01)
+
+    def test_a_factor_of_one_arrives_at_once(self):
+        from src.render.scene3d.camera import smooth_towards
+        out = smooth_towards([0.0, 0.0, 0.0], [3.0, 4.0, 5.0], 1.0)
+        assert out.tolist() == [3.0, 4.0, 5.0]
+
+    def test_angles_take_the_short_way_round(self):
+        # Following a car past the start line must not swing the camera all
+        # the way around the circuit.
+        from src.render.scene3d.camera import smooth_angle_towards
+        out = smooth_angle_towards(3.0, -3.0, 0.5)
+        assert abs(out) > 3.0  # went the short way, over the wrap
+
+    def test_angles_move_towards_the_target(self):
+        from src.render.scene3d.camera import smooth_angle_towards
+        out = smooth_angle_towards(0.0, 1.0, 0.5)
+        assert out == pytest.approx(0.5)
+
+    def test_an_angle_arrives_eventually(self):
+        from src.render.scene3d.camera import smooth_angle_towards
+        angle = 0.0
+        for _ in range(200):
+            angle = smooth_angle_towards(angle, 2.0, 0.2)
+        assert angle == pytest.approx(2.0, abs=0.01)

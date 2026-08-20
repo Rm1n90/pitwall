@@ -27,6 +27,9 @@ from src.lib.speed_traps import from_lap_times as speed_traps_from_lap_times
 from src.render.cars import (
     draw_car, draw_label, draw_safety_car, driver_at,
 )
+#: What sits above the horizon in the three-dimensional view.
+SKY_COLOUR = (12, 13, 18, 255)
+
 from src.lib import gap_history
 from src.lib.practice import is_practice, practice_label
 from src.render.timing_tower import TOWER_WIDTH, TimingTower
@@ -97,6 +100,7 @@ class F1RaceReplayWindow(arcade.Window):
         self._scene_3d = None
         self._camera_3d = None
         self._orbiting = False
+        self.camera_mode = "free"
         # Practice is ranked on lap times, so the tower shows different
         # columns and there is no grid to have gained places against.
         self.practice_mode = is_practice(session_type)
@@ -346,6 +350,9 @@ class F1RaceReplayWindow(arcade.Window):
         if os.environ.get("PITWALL_3D"):
             self.view_3d = True
             self._setup_3d()
+            mode = os.environ.get("PITWALL_CAMERA")
+            if mode:
+                self.camera_mode = mode
 
         seek = os.environ.get("PITWALL_SEEK")
         if seek:
@@ -1572,10 +1579,56 @@ class F1RaceReplayWindow(arcade.Window):
         return (max(usable_width, 200) / max(self.width, 1),
                 max(usable_height, 200) / max(self.height, 1))
 
+    def _follow_target(self, frame):
+        """The car the camera should be following, if any."""
+        codes = getattr(self, "selected_drivers", None) or []
+        if not codes and getattr(self, "selected_driver", None):
+            codes = [self.selected_driver]
+        if not codes:
+            # Nobody chosen: follow the leader, as a broadcast would.
+            codes = [code for code, car in frame["drivers"].items()
+                     if car.get("position") == 1]
+        for code in codes:
+            car = frame["drivers"].get(code)
+            if car and not car.get("retired") \
+                    and car.get("x") is not None:
+                return car
+        return None
+
+    def _follow_with_camera(self, frame) -> None:
+        """Move the camera to follow a car, in the mode that is set."""
+        from src.render.scene3d.camera import (
+            CHASE_DISTANCE_M, CHASE_PITCH, MODE_CHASE, MODE_TRACK,
+            TRACK_DISTANCE_M, TRACK_PITCH, smooth_angle_towards,
+            smooth_towards,
+        )
+
+        if self.camera_mode not in (MODE_CHASE, MODE_TRACK):
+            return
+        car = self._follow_target(frame)
+        if car is None:
+            return
+
+        surface = self._scene_3d.surface
+        position, heading = surface.place([car["x"]], [car["y"]])
+        camera = self._camera_3d
+
+        camera.look_at(smooth_towards(camera.target, position[0]))
+        if self.camera_mode == MODE_CHASE:
+            camera.yaw = smooth_angle_towards(camera.yaw, float(heading[0]))
+            camera.pitch = CHASE_PITCH
+            camera.distance = CHASE_DISTANCE_M
+        else:
+            # A tracking shot keeps its own angle and lets the car come to
+            # it, so the viewer keeps their bearings.
+            camera.pitch = TRACK_PITCH
+            camera.distance = TRACK_DISTANCE_M
+
     def _draw_scene_3d(self, frame) -> None:
         """Draw the circuit and the field in three dimensions."""
         scene, camera = self._scene_3d, self._camera_3d
         surface = scene.surface
+        self._follow_with_camera(frame)
 
         codes, xs, ys, colours = [], [], [], []
         for code, car in frame["drivers"].items():
@@ -1590,6 +1643,9 @@ class F1RaceReplayWindow(arcade.Window):
             colour = self.driver_colors.get(code, (200, 200, 200))
             colours.append([channel / 255.0 for channel in colour[:3]])
 
+        from src.render.scene3d.renderer import car_scale_for_distance
+
+        scene.car_scale = car_scale_for_distance(camera.distance)
         if codes:
             positions, headings = surface.place(xs, ys)
             scene.set_cars(positions, headings, colours)
@@ -1606,8 +1662,10 @@ class F1RaceReplayWindow(arcade.Window):
         self.clear()
         if self.view_3d and self._scene_3d is not None:
             # 2D drawing does not use the depth buffer, so it has to be
-            # cleared here or the scene builds up frame on frame.
-            self.ctx.screen.clear(depth=1.0)
+            # cleared here or the scene builds up frame on frame. The colour
+            # goes with it: above the horizon there is no ground to draw, and
+            # the window's own background is not a sky.
+            self.ctx.screen.clear(color=SKY_COLOUR, depth=1.0)
 
         # 1. Draw Background (stretched to fit new window size)
         if self.bg_texture:
@@ -1952,6 +2010,14 @@ class F1RaceReplayWindow(arcade.Window):
         if symbol == arcade.key.V:
             self.toggle_3d()
             return
+        if self.view_3d and symbol == arcade.key.C:
+            from src.render.scene3d.camera import next_mode
+
+            self.camera_mode = next_mode(self.camera_mode)
+            if self.camera_mode == "free":
+                self.reset_3d_camera()
+            print(f"Camera: {self.camera_mode}")
+            return
         if self.view_3d and symbol == arcade.key.R:
             self.reset_3d_camera()
             return
@@ -2052,6 +2118,7 @@ class F1RaceReplayWindow(arcade.Window):
         if self._camera_3d is None or self._scene_3d is None:
             return
         surface = self._scene_3d.surface
+        self.camera_mode = "free"
         self._camera_3d.look_at(surface.centre_world())
         self._camera_3d.yaw = 0.7
         self._camera_3d.pitch = np.deg2rad(34.0)

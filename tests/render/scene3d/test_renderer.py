@@ -154,3 +154,27 @@ class TestCars:
 
         assert red[:, :, 0].sum() > blue[:, :, 0].sum()
         assert blue[:, :, 2].sum() > red[:, :, 2].sum()
+
+
+class TestCarScale:
+    """Cars are oversized from far away and life-sized from close up."""
+
+    def test_a_distant_camera_oversizes_the_cars(self):
+        from src.render.scene3d.renderer import car_scale_for_distance
+        assert car_scale_for_distance(1500.0) > 4.0
+
+    def test_a_chase_camera_leaves_them_life_sized(self):
+        from src.render.scene3d.renderer import car_scale_for_distance
+        assert car_scale_for_distance(34.0) == 1.0
+
+    def test_the_scale_never_runs_away(self):
+        from src.render.scene3d.renderer import (
+            MAX_CAR_SCALE, MIN_CAR_SCALE, car_scale_for_distance,
+        )
+        assert car_scale_for_distance(1e9) == MAX_CAR_SCALE
+        assert car_scale_for_distance(0.0) == MIN_CAR_SCALE
+
+    def test_the_scale_grows_with_distance(self):
+        from src.render.scene3d.renderer import car_scale_for_distance
+        assert (car_scale_for_distance(600.0)
+                > car_scale_for_distance(300.0))
