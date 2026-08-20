@@ -37,7 +37,6 @@ set the countdown has to be continued from `Utc` rather than read off
 |------|-----------------|-----------------------|
 | **TimingStats** | Personal best lap, best sector times with field position, best speeds at each trap | A proper timing tower: purple/green sector colouring, speed trap rankings |
 | **TyreStintSeries** | Every stint for every driver with compound, age and whether the set was new | A full strategy chart without deriving it from lap data |
-| **TeamRadio** | Timestamped MP3 clips per driver | Radio messages on the timeline, playable |
 | **CurrentTyres** | Current compound and whether new | Simpler and more direct than deriving from `TimingAppData` |
 | **TopThree** | Podium positions | A broadcast-style podium panel |
 | **DriverRaceInfo** | Position and gap per driver | Cross-check for our own classification |

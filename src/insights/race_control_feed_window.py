@@ -101,6 +101,9 @@ class RaceControlFeedWindow(PitWallWindow):
         self.setGeometry(120, 120, 420, 620)
 
     def setup_ui(self):
+        # Radio clips arrive as a whole list and are shown as the replay
+        # reaches them, so seeking backwards replays them in order too.
+        self._radio_clips = []
         central = QWidget()
         central.setStyleSheet(f"background: {_BG};")
         self.setCentralWidget(central)
@@ -163,7 +166,8 @@ class RaceControlFeedWindow(PitWallWindow):
                 background: none;
             }}
         """)
-        self._text_browser.setOpenExternalLinks(False)
+        # Radio clips are ordinary links, opened by the system player.
+        self._text_browser.setOpenExternalLinks(True)
         self._text_browser.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self._text_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         root.addWidget(self._text_browser, stretch=1)
@@ -226,18 +230,60 @@ class RaceControlFeedWindow(PitWallWindow):
             else:
                 self._set_state("no_data")
 
-        # Process race control events
-        events = data.get("race_control_events", [])
-        for event in events:
-            event_hash = f"{event['time']}|{event['message']}"
-            if event_hash in self._seen_hashes:
-                continue
-            self._seen_hashes.add(event_hash)
+        # Team radio, which is published alongside race control
+        radio = data.get("team_radio")
+        if radio:
+            self._radio_clips = radio
 
+        # Radio and race control are separate feeds but belong on one
+        # timeline, so they are merged and shown in the order they happened.
+        now = (data.get("session_data") or {}).get("time_s")
+        pending = []
+
+        for event in data.get("race_control_events", []) or []:
+            key = f"{event['time']}|{event['message']}"
+            if key not in self._seen_hashes:
+                pending.append((event.get("time", 0.0), key, "event", event))
+
+        if now is not None:
+            for clip in self._radio_clips:
+                if clip["time"] > now:
+                    continue
+                key = f"radio|{clip['url']}"
+                if key not in self._seen_hashes:
+                    pending.append((clip["time"], key, "radio", clip))
+
+        pending.sort(key=lambda item: item[0])
+        for _, key, kind, item in pending:
+            self._seen_hashes.add(key)
             if self._state != "active":
                 self._set_state("active")
+            if kind == "radio":
+                self._add_radio_item(item)
+            else:
+                self._add_event_item(item)
 
-            self._add_event_item(event)
+    def _add_radio_item(self, clip):
+        """Append a team radio message, linking to the clip itself."""
+        time_str = _format_time(clip.get("time", 0.0))
+        code = clip.get("code", "?")
+        html = f"""
+        <table width="100%" cellspacing="0" cellpadding="8" style="background: {_BG};">
+            <tr>
+                <td width="3" style="background-color: #4aa3df; padding: 0;"></td>
+                <td width="85" style="border-bottom: 1px solid {_BORDER}; vertical-align: top; padding-left: 10px; white-space: nowrap;">
+                    <span style="color: {_TEXT_TIME}; font-family: Consolas; font-size: 12px;">{time_str}</span>
+                </td>
+                <td style="border-bottom: 1px solid {_BORDER}; vertical-align: top;">
+                    <span style="color: #4aa3df; font-family: Arial; font-size: 14px;">RADIO · {code}</span>
+                    <br><a href="{clip.get('url', '')}" style="color: {_TEXT_DIMMED}; font-size: 11px;">play clip</a>
+                </td>
+            </tr>
+        </table>
+        """
+        self._text_browser.append(html)
+        scrollbar = self._text_browser.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
 
     def _add_event_item(self, event):
         """Append a formatted event to the text browser."""

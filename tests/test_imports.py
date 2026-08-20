@@ -30,6 +30,7 @@ MODULES = [
     "src.lib.pit_stops",
     "src.lib.position_history",
     "src.lib.standings",
+    "src.lib.team_radio",
     "src.lib.season",
     "src.lib.track_geometry",
     "src.lib.settings",

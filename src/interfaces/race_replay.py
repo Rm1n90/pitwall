@@ -46,7 +46,8 @@ class F1RaceReplayWindow(arcade.Window):
                  left_ui_margin=340, right_ui_margin=376, total_laps=None, visible_hud=True,
                  session_info=None, session=None, enable_telemetry=False,
                  race_control_messages=None, live_engine=None,
-                 circuit_info=None, pit_lane=None, pit_stop_times=None):
+                 circuit_info=None, pit_lane=None, pit_stop_times=None,
+                 team_radio=None):
         # Set resizable to True so the user can adjust mid-sim
         super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, title, resizable=True)
         self.maximize()
@@ -117,6 +118,7 @@ class F1RaceReplayWindow(arcade.Window):
         leaderboard_x = max(20, self.width - self.right_ui_margin + 12)
         self.leaderboard_comp = TimingTower(x=leaderboard_x, width=336, visible=visible_hud)
         self.leaderboard_comp.pit_times = pit_stop_times or {}
+        self.team_radio = team_radio or []
         self.weather_comp = WeatherComponent(left=20, top_offset=170, visible=visible_hud)
         self.legend_comp = LegendComponent(x=max(12, self.left_ui_margin - 320), visible=visible_hud)
         self.driver_info_comp = DriverInfoComponent(left=20, width=300)
@@ -441,6 +443,8 @@ class F1RaceReplayWindow(arcade.Window):
         payload["lap_times"] = self._precomputed_lap_times
         payload["status_laps"] = self._precomputed_status_laps
         payload["position_history"] = self._position_history
+        if self.team_radio:
+            payload["team_radio"] = self.team_radio
         if getattr(self, "championship_prediction", None):
             payload["championship_prediction"] = self.championship_prediction
 
