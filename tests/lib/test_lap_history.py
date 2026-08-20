@@ -103,3 +103,60 @@ class TestBadData:
     def test_survives_no_data_at_all(self):
         assert LapHistory({}).snapshot(10.0)["last_laps"] == {}
         assert LapHistory(None).drivers == []
+
+
+class TestDeletedLaps:
+    """A lap the stewards take away still happened, but never counts.
+
+    In practice this matters: a lap is usually deleted precisely because it
+    was quick enough to be worth running wide for.
+    """
+
+    def test_a_deleted_lap_is_not_a_personal_best(self):
+        history = LapHistory({"AAA": [
+            _lap(1, 92.0, 92.0),
+            dict(_lap(2, 88.0, 180.0), deleted=True),
+        ]})
+        assert history.personal_best("AAA", 200.0) == 92.0
+
+    def test_a_deleted_lap_is_still_the_last_lap(self):
+        history = LapHistory({"AAA": [
+            _lap(1, 92.0, 92.0),
+            dict(_lap(2, 88.0, 180.0), deleted=True),
+        ]})
+        assert history.last_lap("AAA", 200.0) == 88.0
+
+    def test_a_driver_whose_only_lap_was_deleted_has_no_best(self):
+        history = LapHistory({"AAA": [
+            dict(_lap(1, 88.0, 92.0), deleted=True),
+        ]})
+        assert history.personal_best("AAA", 200.0) is None
+
+    def test_a_deleted_lap_does_not_take_the_session_best(self):
+        history = LapHistory({
+            "AAA": [_lap(1, 92.0, 92.0)],
+            "BBB": [dict(_lap(1, 88.0, 95.0), deleted=True)],
+        })
+        assert history.session_best(200.0) == (92.0, "AAA")
+
+    def test_a_later_legal_lap_still_becomes_the_best(self):
+        history = LapHistory({"AAA": [
+            dict(_lap(1, 88.0, 92.0), deleted=True),
+            _lap(2, 90.0, 182.0),
+        ]})
+        assert history.personal_best("AAA", 200.0) == 90.0
+
+
+class TestDeletedSectors:
+
+    def test_a_deleted_lap_cannot_hold_a_purple_sector(self):
+        # The sectors of a lap that was taken away do not count either.
+        history = LapHistory({
+            "AAA": [dict(_lap(1, 88.0, 92.0), deleted=True,
+                         sector1_s=20.0, sector2_s=30.0, sector3_s=38.0)],
+            "BBB": [dict(_lap(1, 92.0, 95.0),
+                         sector1_s=25.0, sector2_s=32.0, sector3_s=35.0)],
+        })
+        assert history.sector_status("AAA", 200.0) == [0, 0, 0]
+        # BBB set the quickest sectors that still stand.
+        assert history.sector_status("BBB", 200.0) == [2, 2, 2]

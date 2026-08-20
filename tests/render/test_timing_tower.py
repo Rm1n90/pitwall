@@ -88,3 +88,50 @@ class TestPitStopTimes:
 
     def test_without_a_lap_the_last_known_stop_is_used(self):
         assert self._tower().latest_stop("AAA", None).stationary_s == 3.1
+
+
+class TestPracticeGap:
+    """In practice the gap column is a lap time delta, not a distance."""
+
+    def test_the_quickest_driver_shows_the_session_best(self):
+        from src.render.timing_tower import format_practice_gap
+        assert format_practice_gap(80.5, 80.5) == "1:20.500"
+
+    def test_everyone_else_shows_how_far_off_they_are(self):
+        from src.render.timing_tower import format_practice_gap
+        assert format_practice_gap(81.0, 80.5) == "+0.500"
+
+    def test_a_driver_without_a_time_shows_a_dash(self):
+        from src.render.timing_tower import format_practice_gap
+        assert format_practice_gap(None, 80.5) == "—"
+
+    def test_the_first_lap_of_the_session_is_the_session_best(self):
+        from src.render.timing_tower import format_practice_gap
+        assert format_practice_gap(83.2, None) == "1:23.200"
+
+    def test_large_deltas_stay_readable(self):
+        from src.render.timing_tower import format_practice_gap
+        assert format_practice_gap(95.0, 80.0) == "+15.000"
+
+
+class TestPracticeMode:
+    def test_a_tower_is_in_race_mode_by_default(self):
+        tower = TimingTower(x=0)
+        assert tower.practice_mode is False
+
+    def test_practice_mode_can_be_turned_on(self):
+        tower = TimingTower(x=0)
+        tower.practice_mode = True
+        assert tower.practice_mode is True
+
+    def test_practice_headers_replace_the_race_ones(self):
+        # No grid to compare against and no pit stops worth counting, but
+        # lap counts and best times matter.
+        tower = TimingTower(x=0)
+        race = [label for _, label in tower.header_labels()]
+        tower.practice_mode = True
+        practice = [label for _, label in tower.header_labels()]
+
+        assert "PIT" in race and "STOP" in race
+        assert "PIT" not in practice and "STOP" not in practice
+        assert "BEST" in practice and "LAPS" in practice

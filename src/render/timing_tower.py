@@ -27,6 +27,16 @@ COL_PITS = 212
 COL_STOP = 228
 COL_LAP = 272
 
+# Practice has no grid to compare against and no stops worth counting, so
+# the columns freed up go to the driver's best lap and how many laps they
+# have run.
+PRACTICE_COL_CODE = 30
+PRACTICE_COL_SECTORS = 66
+PRACTICE_COL_BEST = 100
+PRACTICE_COL_GAP = 166
+PRACTICE_COL_TYRE = 232
+PRACTICE_COL_LAPS = 280
+
 BACKGROUND = (18, 19, 23, 210)
 ROW_ALTERNATE = (26, 28, 34, 150)
 SELECTED_ROW = (70, 74, 86, 235)
@@ -78,6 +88,16 @@ def format_lap_time(seconds: Optional[float]) -> str:
     return f"{remainder:.3f}"
 
 
+def format_practice_gap(best_s: Optional[float],
+                        session_best_s: Optional[float]) -> str:
+    """Render a practice gap: the leader's own time, everyone else's delta."""
+    if best_s is None or best_s <= 0:
+        return "—"
+    if session_best_s is None or best_s <= session_best_s:
+        return format_lap_time(best_s)
+    return f"+{best_s - session_best_s:.3f}"
+
+
 class TimingTower:
     """Draws the running order with gaps, tyres, stops and lap times.
 
@@ -111,6 +131,8 @@ class TimingTower:
         self.sectors: Dict[str, List[int]] = {}
         #: Leader's most recent lap time, used to turn part-laps into seconds.
         self.reference_lap_s: float = FALLBACK_LAP_TIME_S
+        #: Practice is ranked on lap times, so it needs different columns.
+        self.practice_mode: bool = False
 
         self._row_text = arcade.Text("", 0, 0, TEXT_COLOR, 12)
 
@@ -164,13 +186,22 @@ class TimingTower:
         for index, (code, color, car, _progress) in enumerate(rows):
             self._draw_row(index, code, color, car, body_top, rows)
 
+    def header_labels(self):
+        """Column offsets and headings for the mode the tower is in."""
+        if self.practice_mode:
+            return ((PRACTICE_COL_SECTORS, "SECT"),
+                    (PRACTICE_COL_BEST, "BEST"),
+                    (PRACTICE_COL_GAP, "GAP"),
+                    (PRACTICE_COL_TYRE, "TYRE"),
+                    (PRACTICE_COL_LAPS, "LAPS"))
+        return ((COL_SECTORS, "SECT"), (COL_GAP, "GAP"),
+                (COL_TYRE, "TYRE"), (COL_PITS, "PIT"),
+                (COL_STOP, "STOP"), (COL_LAP, "LAST"))
+
     def _draw_header(self, top: float) -> None:
         arcade.Text("TIMING", self.x, top, TEXT_COLOR, 15, bold=True,
                     anchor_x="left", anchor_y="top").draw()
-        labels = ((COL_SECTORS, "SECT"), (COL_GAP, "GAP"),
-                  (COL_TYRE, "TYRE"), (COL_PITS, "PIT"),
-                  (COL_STOP, "STOP"), (COL_LAP, "LAST"))
-        for offset, label in labels:
+        for offset, label in self.header_labels():
             arcade.Text(label, self.x + offset, top - 24, HEADER_COLOR, 8,
                         bold=True, anchor_x="left", anchor_y="top").draw()
 
@@ -200,6 +231,11 @@ class TimingTower:
 
         self._text(str(car.get("position") or index + 1),
                    COL_POSITION + 6, text_y, base_color, 12, bold=True)
+
+        if self.practice_mode:
+            self._draw_practice_columns(code, color, car, text_y)
+            return
+
         self._draw_change(code, car, text_y)
         self._text(code, COL_CODE, text_y,
                    MUTED_COLOR if retired else color[:3], 13, bold=True)
@@ -222,7 +258,48 @@ class TimingTower:
 
         self._draw_last_lap(code, text_y, retired)
 
-    def _draw_sectors(self, code: str, text_y: float, retired: bool) -> None:
+    def _draw_practice_columns(self, code: str, color, car: dict,
+                               text_y: float) -> None:
+        """Draw the columns a practice timing screen shows.
+
+        There is no grid to have gained places against and no stops worth
+        counting, so the row carries the driver's best lap, how far off the
+        session best that is, and how many laps they have run.
+        """
+        in_pit = bool(car.get("in_pit"))
+        self._text(code, PRACTICE_COL_CODE, text_y,
+                   PIT_COLOR if in_pit else color[:3], 13, bold=True)
+        self._draw_sectors(code, text_y, retired=False,
+                           offset=PRACTICE_COL_SECTORS)
+
+        best = self.personal_bests.get(code)
+        if best is not None and self.session_best is not None \
+                and abs(best - self.session_best) < 1e-6:
+            best_color = PURPLE
+        else:
+            best_color = TEXT_COLOR if best is not None else MUTED_COLOR
+        self._text(format_lap_time(best), PRACTICE_COL_BEST, text_y,
+                   best_color, 10)
+
+        if in_pit:
+            self._text("IN PIT", PRACTICE_COL_GAP, text_y, PIT_COLOR, 10,
+                       bold=True)
+        else:
+            self._text(format_practice_gap(best, self.session_best),
+                       PRACTICE_COL_GAP, text_y,
+                       best_color if best_color is PURPLE else MUTED_COLOR,
+                       10)
+
+        self._draw_tyre(car, text_y, retired=False, offset=PRACTICE_COL_TYRE)
+
+        # The lap the car is on, which the frames carry exactly. Counting
+        # completed lap times instead loses the in-lap back to the garage.
+        laps = car.get("lap")
+        self._text("—" if not laps else str(int(laps)),
+                   PRACTICE_COL_LAPS, text_y, MUTED_COLOR, 11)
+
+    def _draw_sectors(self, code: str, text_y: float, retired: bool,
+                      offset: int = COL_SECTORS) -> None:
         """Draw three bars showing how the driver's last sectors went.
 
         Purple for the fastest anyone has managed, green for the driver's own
@@ -230,7 +307,7 @@ class TimingTower:
         """
         statuses = self.sectors.get(code) or [0, 0, 0]
         for index, status in enumerate(statuses[:3]):
-            left = self.x + COL_SECTORS + index * (
+            left = self.x + offset + index * (
                 SECTOR_BAR_WIDTH + SECTOR_BAR_GAP)
             try:
                 color = SECTOR_COLORS[int(status)]
@@ -274,17 +351,18 @@ class TimingTower:
         gap_laps = max(0.0, leader_progress - rows[index][3])
         return format_gap(gap_laps, self.reference_lap_s)
 
-    def _draw_tyre(self, car: dict, text_y: float, retired: bool) -> None:
+    def _draw_tyre(self, car: dict, text_y: float, retired: bool,
+                   offset: int = COL_TYRE) -> None:
         compound = car.get("tyre")
         color = (110, 114, 126) if retired else compound_color(compound)
-        arcade.draw_circle_filled(self.x + COL_TYRE + 6, text_y, 6, color)
-        arcade.draw_circle_outline(self.x + COL_TYRE + 6, text_y, 6,
+        arcade.draw_circle_filled(self.x + offset + 6, text_y, 6, color)
+        arcade.draw_circle_outline(self.x + offset + 6, text_y, 6,
                                    (20, 21, 25), 1.4)
         try:
             age = int(float(car.get("tyre_life") or 0))
         except (TypeError, ValueError):
             age = 0
-        self._text(str(age), COL_TYRE + 18, text_y, MUTED_COLOR, 10)
+        self._text(str(age), offset + 18, text_y, MUTED_COLOR, 10)
 
     def latest_stop(self, code: str, lap: Optional[int]):
         """Return the driver's most recent completed stop, if any."""

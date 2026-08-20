@@ -41,6 +41,8 @@ class LapHistory:
         self._bests: Dict[str, List[float]] = {}
         #: ``{code: [[status, status, status], ...]}`` per completed lap.
         self._sectors: Dict[str, List[List[int]]] = {}
+        #: ``{code: [bool, ...]}`` whether each lap was taken away.
+        self._deleted: Dict[str, List[bool]] = {}
 
         for code, laps in (lap_times or {}).items():
             usable = []
@@ -56,22 +58,26 @@ class LapHistory:
                 if end is None or seconds is None or seconds <= 0:
                     continue
                 usable.append((float(end), float(seconds),
-                               _sector_times(lap)))
+                               _sector_times(lap), bool(lap.get("deleted"))))
             if not usable:
                 continue
             usable.sort()
 
             ends, times, bests = [], [], []
-            best = float("inf")
-            for end, seconds, _ in usable:
-                best = min(best, seconds)
+            best = None
+            for end, seconds, _, deleted in usable:
+                # A deleted lap still put mileage on the car, so it stays in
+                # the history, but it can never stand as anybody's best.
+                if not deleted and (best is None or seconds < best):
+                    best = seconds
                 ends.append(end)
                 times.append(seconds)
                 bests.append(best)
             self._ends[code] = ends
             self._times[code] = times
             self._bests[code] = bests
-            self._sectors[code] = [sectors for _, _, sectors in usable]
+            self._sectors[code] = [sectors for _, _, sectors, _ in usable]
+            self._deleted[code] = [deleted for _, _, _, deleted in usable]
 
         self._grade_sectors()
 
@@ -95,6 +101,9 @@ class LapHistory:
         }
 
         for _, code, index in ordered:
+            if self._deleted.get(code, [])[index:index + 1] == [True]:
+                # The sectors of a lap that was taken away do not count.
+                continue
             times = self._sectors[code][index]
             bests = personal.setdefault(code, [None, None, None])
             for sector, seconds in enumerate(times):

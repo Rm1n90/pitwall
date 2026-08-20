@@ -25,6 +25,7 @@ from src.lib.flag_sectors import (
 from src.lib.lap_history import LapHistory
 from src.lib.speed_traps import from_lap_times as speed_traps_from_lap_times
 from src.render.cars import draw_car, draw_label, draw_safety_car
+from src.lib.practice import is_practice, practice_label
 from src.render.timing_tower import TimingTower
 from src.render.track import TrackRenderer, corner_labels_from_circuit_info
 from src.tyre_degradation_integration import TyreDegradationIntegrator
@@ -44,7 +45,8 @@ BOTTOM_UI_MARGIN = 120
 class F1RaceReplayWindow(arcade.Window):
     def __init__(self, frames, track_statuses, example_lap, drivers, title,
                  playback_speed=1.0, driver_colors=None, circuit_rotation=0.0,
-                 left_ui_margin=340, right_ui_margin=376, total_laps=None, visible_hud=True,
+                 left_ui_margin=340, right_ui_margin=376, total_laps=None,
+                 session_type="R", visible_hud=True,
                  session_info=None, session=None, enable_telemetry=False,
                  race_control_messages=None, live_engine=None,
                  circuit_info=None, pit_lane=None, pit_stop_times=None,
@@ -84,6 +86,10 @@ class F1RaceReplayWindow(arcade.Window):
         self.frame_index = 0.0  # use float for fractional-frame accumulation
         self.paused = False
         self.total_laps = total_laps
+        self.session_type = session_type
+        # Practice is ranked on lap times, so the tower shows different
+        # columns and there is no grid to have gained places against.
+        self.practice_mode = is_practice(session_type)
         self.has_weather = any("weather" in frame for frame in frames) if frames else False
 
         # Pre-compute per-driver lap times from the full frame data.
@@ -542,6 +548,10 @@ class F1RaceReplayWindow(arcade.Window):
                         "is_out_lap": is_out_lap,
                         "fastf1_generated": bool(row.get("FastF1Generated", False)),
                         "is_accurate": bool(row.get("IsAccurate", True)),
+                        # Taken away by the stewards, usually for track
+                        # limits. It still counts as mileage but never as
+                        # anybody's best lap.
+                        "deleted": bool(row.get("Deleted", False)),
                     })
                 if result:
                     fallback_by_code = {
@@ -1578,10 +1588,16 @@ class F1RaceReplayWindow(arcade.Window):
         seconds = int(t % 60)
         time_str = f"{hours:02}:{minutes:02}:{seconds:02}"
 
-        # Format Lap String 
-        lap_str = f"Lap: {leader_lap}"
-        if self.total_laps is not None:
-            lap_str += f"/{self.total_laps}"
+        # Format Lap String
+        if self.practice_mode:
+            # Nobody leads a practice session: the car furthest down the road
+            # is just whoever has run the most laps, so name the session
+            # instead and let the clock below it count down.
+            lap_str = practice_label(self.session_type)
+        else:
+            lap_str = f"Lap: {leader_lap}"
+            if self.total_laps is not None:
+                lap_str += f"/{self.total_laps}"
 
         # Draw HUD - Top Left
         if self.visible_hud:
@@ -1656,6 +1672,7 @@ class F1RaceReplayWindow(arcade.Window):
         tower.session_best_code = history["session_best_code"]
         tower.grid_positions = self.grid_positions
         tower.sectors = history.get("sectors", {})
+        tower.practice_mode = self.practice_mode
         leader = driver_list[0][0] if driver_list else None
         tower.reference_lap_s = (
             history["last_laps"].get(leader)

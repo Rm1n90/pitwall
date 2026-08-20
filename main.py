@@ -5,6 +5,7 @@ import sys
 from src.cli.race_selection import cli_load
 from src.gui.race_selection import RaceSelectionWindow
 from PySide6.QtWidgets import QApplication
+from src.lib.practice import is_practice, practice_label
 from src.lib.season import get_season
 import logging
 
@@ -21,6 +22,13 @@ def _arg_value(name, default=None, cast=str):
     except (TypeError, ValueError):
         print(f"Ignoring invalid value for {name}: {sys.argv[index]!r}")
         return default
+
+
+def session_label(session_type):
+    """The name to show in the window title for a session type."""
+    if is_practice(session_type):
+        return practice_label(session_type)
+    return "Sprint" if session_type == "S" else "Race"
 
 
 def run_live_auth():
@@ -212,7 +220,7 @@ def main(year=None, round_number=None, playback_speed=1, session_type='R', visib
       drivers=drivers,
       playback_speed=playback_speed,
       driver_colors=race_telemetry['driver_colors'],
-      title=f"{session.event['EventName']} - {'Sprint' if session_type == 'S' else 'Race'}",
+      title=f"{session.event['EventName']} - {session_label(session_type)}",
       total_laps=race_telemetry['total_laps'],
       circuit_rotation=circuit_rotation,
       visible_hud=visible_hud,
@@ -225,7 +233,8 @@ def main(year=None, round_number=None, playback_speed=1, session_type='R', visib
       pit_lane=pit_lane,
       pit_stop_times=pit_stop_times,
       team_radio=team_radio,
-      portraits=portraits
+      portraits=portraits,
+      session_type=session_type
     )
 
 if __name__ == "__main__":
@@ -273,7 +282,21 @@ if __name__ == "__main__":
       visible_hud = False
 
     # Session type selection
-    session_type = 'SQ' if "--sprint-qualifying" in sys.argv else ('S' if "--sprint" in sys.argv else ('Q' if "--qualifying" in sys.argv else 'R'))
+    if "--practice" in sys.argv:
+      number = _arg_value("--practice", 1, int)
+      if number not in (1, 2, 3):
+        print(f"Practice sessions are numbered 1 to 3, not {number}")
+        sys.exit(2)
+      session_type = f"FP{number}"
+    elif "--sprint-qualifying" in sys.argv:
+      session_type = 'SQ'
+    elif "--sprint" in sys.argv:
+      session_type = 'S'
+    elif "--qualifying" in sys.argv:
+      session_type = 'Q'
+    else:
+      session_type = 'R'
+
 
     # Optional ready-file path used when spawned from the GUI to signal ready state
     ready_file = None

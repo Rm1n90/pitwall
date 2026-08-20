@@ -17,6 +17,10 @@ from src.lib.classification import (
     read_classification,
 )
 from src.lib.frame_store import load as load_frames, save as save_frames
+from src.lib.practice import (
+    DEFAULT_PRACTICE_MINUTES, PracticeTiming, is_practice, read_laps,
+    time_remaining,
+)
 from src.lib.settings import get_settings
 from src.lib.track_geometry import TrackLine, rebuild_positions
 from src.lib.time import parse_time_string
@@ -641,9 +645,65 @@ def _build_race_progress(resampled_data, classification, lap_length_m):
     return progress
 
 
+def _practice_positions(timing, codes, timeline):
+    """Rank the field by best lap set so far, at every point on the timeline.
+
+    Practice has no grid and no finishing order, so the running order is
+    whoever has gone quickest up to that moment. Drivers who have not set a
+    time yet line up behind those who have, in a stable order.
+
+    Returns:
+        ``{code: array of one-based positions, one per frame}``.
+    """
+    frames = len(timeline)
+    if not codes:
+        return {}
+
+    # Ranking every frame one at a time would mean sorting a few million
+    # times, so the whole session is ranked in one go.
+    best = np.stack([timing.best_series(code, timeline) for code in codes],
+                    axis=1)
+    index = np.arange(len(codes), dtype=float)
+
+    # A driver without a time sorts behind everyone who has one, and ties
+    # break on the driver's own index so the order never flickers.
+    NO_TIME = 1e9
+    ranked = np.where(np.isnan(best), NO_TIME + index, best + index * 1e-9)
+
+    order = np.argsort(ranked, axis=1, kind="stable")
+    places = np.empty_like(order)
+    np.put_along_axis(
+        places, order,
+        np.arange(1, len(codes) + 1)[None, :].repeat(frames, axis=0),
+        axis=1)
+    return {code: places[:, column] for column, code in enumerate(codes)}
+
+
+def _practice_session_length_s(session, global_t_min):
+    """How long the session runs and when its clock starts, in replay time.
+
+    Returns:
+        ``(green_light_s, length_s)`` on the replay clock.
+    """
+    length_s = DEFAULT_PRACTICE_MINUTES * 60.0
+    green_s = 0.0
+    start = getattr(session, "session_start_time", None)
+    if start is not None:
+        try:
+            green_s = float(start.total_seconds()) - float(global_t_min)
+        except (AttributeError, TypeError, ValueError):
+            green_s = 0.0
+    return green_s, length_s
+
+
 def get_race_telemetry(session, session_type="R"):
     event_name = str(session).replace(" ", "_")
-    cache_suffix = "sprint" if session_type == "S" else "race"
+    if is_practice(session_type):
+        cache_suffix = str(session_type).lower()
+    elif session_type == "S":
+        cache_suffix = "sprint"
+    else:
+        cache_suffix = "race"
 
     # Check if this data has already been computed
     base = f"computed_data/{event_name}_{cache_suffix}_telemetry"
@@ -948,6 +1008,22 @@ def get_race_telemetry(session, session_type="R"):
         resampled_data, classification, lap_length_m
     )
 
+    # Practice is ranked on lap times rather than on track position, and it
+    # runs to a clock rather than to a lap count.
+    practice = is_practice(session_type)
+    practice_positions = {}
+    green_light_s = 0.0
+    session_length_s = 0.0
+    if practice:
+        timing = PracticeTiming(read_laps(session, global_t_min),
+                                driver_codes)
+        practice_positions = _practice_positions(
+            timing, driver_codes, timeline)
+        green_light_s, session_length_s = _practice_session_length_s(
+            session, global_t_min)
+        print(f"Practice session: ranking {len(driver_codes)} drivers "
+              f"by best lap over {len(timeline)} frames")
+
     for i in range(num_frames):
         t = timeline[i]
         snapshot = []
@@ -979,10 +1055,14 @@ def get_race_telemetry(session, session_type="R"):
         # 5b. Rank the field. Drivers still running are ordered by race
         # progress; once a driver takes the chequered flag their place is
         # fixed at the official result so cool-down laps cannot move anyone.
-        positions = assign_positions(
-            ((car["code"], car["progress"]) for car in snapshot),
-            t, classification,
-        )
+        if practice:
+            positions = {car["code"]: int(practice_positions[car["code"]][i])
+                         for car in snapshot}
+        else:
+            positions = assign_positions(
+                ((car["code"], car["progress"]) for car in snapshot),
+                t, classification,
+            )
         snapshot.sort(key=lambda r: positions[r["code"]])
 
         leader = snapshot[0]
@@ -1068,6 +1148,12 @@ def get_race_telemetry(session, session_type="R"):
         if weather_snapshot:
             frame_payload["weather"] = weather_snapshot
 
+        if practice:
+            # The HUD counts a practice session down rather than counting
+            # laps up, the way the timing screen at the circuit does.
+            frame_payload["time_remaining_s"] = time_remaining(
+                t - green_light_s, session_length_s)
+
         frames.append(frame_payload)
 
     # 5d. Compute Safety Car positions for each frame
@@ -1082,8 +1168,10 @@ def get_race_telemetry(session, session_type="R"):
         "driver_colors": get_driver_colors(session),
         "track_statuses": formatted_track_statuses,
         "race_control_messages": formatted_rc_messages,
-        "total_laps": int(max_lap_number),
+        # Practice runs to a clock, so there is no lap count to run down to.
+        "total_laps": None if practice else int(max_lap_number),
         "max_tyre_life": max_tyre_life_map,
+        "session_type": session_type,
     }
 
     # Stored as columns rather than as a list of dictionaries: a race is about

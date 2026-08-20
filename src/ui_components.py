@@ -609,7 +609,21 @@ class DriverInfoComponent(BaseComponent):
              getattr(window, "leaderboard_ui", None) or \
              getattr(window, "leaderboard_comp", None)
 
-        if lb and hasattr(lb, "entries") and lb.entries:
+        if lb is not None and getattr(lb, "practice_mode", False):
+            # Nobody is racing anybody in practice, so the distance to the car
+            # in front says nothing. What matters is the lap they have set.
+            from src.render.timing_tower import format_lap_time
+            best = (getattr(lb, "personal_bests", None) or {}).get(code)
+            session_best = getattr(lb, "session_best", None)
+            gap_ahead = f"Best: {format_lap_time(best)}"
+            if best is None or session_best is None:
+                gap_behind = "Gap: N/A"
+            elif best <= session_best:
+                gap_behind = "Gap: session best"
+            else:
+                gap_behind = f"Gap: +{best - session_best:.3f}"
+
+        elif lb and hasattr(lb, "entries") and lb.entries:
             try:
                 idx = next(i for i, e in enumerate(lb.entries) if e[0] == code)
                 curr_pos = lb.entries[idx][3]

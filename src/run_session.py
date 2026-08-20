@@ -12,7 +12,7 @@ def run_arcade_replay(frames, track_statuses, example_lap, drivers, title,
                       visible_hud=True, ready_file=None, session_info=None, session=None,
                       enable_telemetry=True, race_control_messages=None, live_engine=None,
                       circuit_info=None, pit_lane=None, pit_stop_times=None,
-                      team_radio=None, portraits=None):
+                      team_radio=None, portraits=None, session_type="R"):
     window = F1RaceReplayWindow(
         frames=frames,
         track_statuses=track_statuses,
@@ -33,7 +33,8 @@ def run_arcade_replay(frames, track_statuses, example_lap, drivers, title,
         pit_lane=pit_lane,
         pit_stop_times=pit_stop_times,
         team_radio=team_radio,
-        portraits=portraits
+        portraits=portraits,
+        session_type=session_type
     )
     # Signal readiness to parent process (if requested) after window created
     if ready_file:

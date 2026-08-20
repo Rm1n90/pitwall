@@ -321,11 +321,14 @@ class RaceSelectionWindow(QMainWindow):
             pass
         # determine sessions to show
         ev_type = (ev.get("type") or "").lower()
-        sessions = ["Qualifying", "Race"]
+        # A sprint weekend runs a single practice session; a normal one runs
+        # three.
+        practice = ["Practice 1"] if "sprint" in ev_type else \
+            ["Practice 1", "Practice 2", "Practice 3"]
+        sessions = practice + ["Qualifying", "Race"]
         if "sprint" in ev_type:
-            sessions.insert(0, "Sprint Qualifying")
-            # show sprint-related session
-            sessions.insert(2, "Sprint")
+            sessions.insert(1, "Sprint Qualifying")
+            sessions.insert(3, "Sprint")
 
         # clear existing session widgets
         for i in reversed(range(self.session_list_layout.count())):
@@ -383,12 +386,16 @@ class RaceSelectionWindow(QMainWindow):
 
         # map button labels to CLI flags
         flag = None
+        extra = []
         if session_label == "Qualifying":
             flag = "--qualifying"
         elif session_label == "Sprint Qualifying":
             flag = "--sprint-qualifying"
         elif session_label == "Sprint":
             flag = "--sprint"
+        elif session_label.startswith("Practice"):
+            flag = "--practice"
+            extra = [session_label.split()[-1]]
 
         main_path = os.path.normpath(
             os.path.join(os.path.dirname(__file__), "..", "..", "main.py")
@@ -400,6 +407,7 @@ class RaceSelectionWindow(QMainWindow):
             cmd += ["--round", str(round_no)]
         if flag:
             cmd.append(flag)
+            cmd += extra
         if "--verbose" in sys.argv:
             cmd.append("--verbose")
         # Show a modal loading dialog and load the session in a background thread.
@@ -420,6 +428,8 @@ class RaceSelectionWindow(QMainWindow):
             session_code = 'SQ'
         elif session_label == "Sprint":
             session_code = 'S'
+        elif session_label.startswith("Practice"):
+            session_code = f"FP{session_label.split()[-1]}"
 
         class FetchSessionWorker(QThread):
             result = Signal(object)
