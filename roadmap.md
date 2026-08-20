@@ -35,8 +35,6 @@ one championship.
 
 ### Live mode depth
 
-- Live gap and interval charts. The feed already carries both, and the tower
-  shows the gap; charting how it moves over a stint is the missing part.
 - Mini-sector colouring on the track itself. The segment statuses arrive in
   the feed, but there is no published mapping from a segment index to a place
   on the circuit, so where to paint them is still unsolved. See

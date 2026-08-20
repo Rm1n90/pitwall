@@ -27,6 +27,8 @@ MODULES = [
     "src.lib.driver_images",
     "src.lib.flag_sectors",
     "src.lib.frame_store",
+    "src.lib.gap_history",
+    "src.lib.practice",
     "src.lib.lap_history",
     "src.lib.pit_lane",
     "src.lib.pit_stops",

@@ -25,6 +25,7 @@ from src.lib.flag_sectors import (
 from src.lib.lap_history import LapHistory
 from src.lib.speed_traps import from_lap_times as speed_traps_from_lap_times
 from src.render.cars import draw_car, draw_label, draw_safety_car
+from src.lib import gap_history
 from src.lib.practice import is_practice, practice_label
 from src.render.timing_tower import TimingTower
 from src.render.track import TrackRenderer, corner_labels_from_circuit_info
@@ -101,6 +102,12 @@ class F1RaceReplayWindow(arcade.Window):
         self._speed_traps = speed_traps_from_lap_times(
             self._precomputed_lap_times)
         self._precomputed_status_laps = self._compute_status_laps(frames, track_statuses)
+
+        # Lap-by-lap gap to the leader, for the gap chart. Offline it
+        # follows from when each car crossed the line; live there is no lap
+        # table, so it accumulates from the frames as they arrive.
+        self._gap_history = gap_history.from_lap_times(
+            self._precomputed_lap_times)
 
         # Lap-by-lap running order, for the position chart.
         self._position_history = {}
@@ -364,6 +371,11 @@ class F1RaceReplayWindow(arcade.Window):
             return
             
         current_frame = self.frames[min(int(self.frame_index), len(self.frames) - 1)] if self.frames else None
+
+        if self.live is not None and current_frame:
+            # No lap table exists yet, so the gap chart is built up from the
+            # gaps the feed puts on each frame.
+            gap_history.update_from_frame(self._gap_history, current_frame)
         
         # Get current track status
         current_track_status = "GREEN"
@@ -460,6 +472,7 @@ class F1RaceReplayWindow(arcade.Window):
         payload["lap_times"] = self._precomputed_lap_times
         payload["status_laps"] = self._precomputed_status_laps
         payload["position_history"] = self._position_history
+        payload["gap_history"] = gap_history.to_payload(self._gap_history)
         if self.team_radio:
             payload["team_radio"] = self.team_radio
         if getattr(self, "championship_prediction", None):

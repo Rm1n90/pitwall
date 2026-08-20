@@ -29,6 +29,7 @@ python main.py            # pick any past session from the GUI
 - **Team Radio:** Radio messages appear on the race control timeline as the replay reaches them, with a link that plays the clip.
 - **Championship Standings:** Where the season stands, from Jolpica, alongside the timing feed's own projection of where it would stand if the race ended now.
 - **Race Position Chart:** Every driver's position plotted against lap number, so a whole race reads at a glance. Available from the insights menu.
+- **Gap Chart:** Time to the leader, lap by lap. A position chart says who is where; this says how much time is between them, so pit stops read as steps and a safety car pulls every line together. Works live as well as on a finished race.
 - **Local Yellows:** A flag naming a marshalling sector lights up that stretch of track only, so you can see which corner the incident is at. A safety car or red flag still tints the whole circuit.
 - **Sector Status:** Each driver's last three sectors shown as purple, green or yellow bars, the way a broadcast timing tower does.
 - **Practice Sessions:** FP1, FP2 and FP3 replayed on the same circuit view, ranked the way a practice timing screen ranks them: by best lap set so far, with each driver's best, their gap to the session best and their lap count, and the clock counting down to the flag.
