@@ -221,77 +221,64 @@ To run a Sprint Qualifying session (if the event has one), add `--sprint`:
 python main.py --viewer --year 2025 --round 12 --qualifying --sprint
 ```
 
-## File Structure
+## Accuracy and data quality
 
-```
-pitwall/
-├── main.py                     # Entry point and CLI
-├── docs/
-│   ├── LiveMode.md             # Live sessions: sources, latency, troubleshooting
-│   ├── PitWallWindow.md        # Building custom telemetry windows
-│   └── InsightsMenu.md         # Adding entries to the insights menu
-├── src/
-│   ├── f1_data.py              # Telemetry loading, frame generation, SC simulation
-│   ├── ui_components.py        # Leaderboard, weather, progress bar, controls
-│   ├── run_session.py          # Window launcher
-│   ├── live/                   # Live sessions
-│   │   ├── engine.py           #   render clock and frame production
-│   │   ├── state.py            #   accumulated session state from the feeds
-│   │   ├── frame_builder.py    #   live state -> replay frames
-│   │   ├── decoding.py         #   feed parsing and .z decompression
-│   │   ├── projection.py       #   car coordinates -> position along the lap
-│   │   ├── schedule.py         #   which session is live right now
-│   │   ├── track_reference.py  #   cached circuit geometry
-│   │   └── sources/            #   SignalR, static archive, simulated
-│   ├── interfaces/
-│   │   ├── race_replay.py      # Race replay window
-│   │   ├── live_mode.py        # Live playback behaviour for that window
-│   │   └── qualifying.py       # Qualifying session interface
-│   ├── insights/               # Telemetry, tyre strategy, lap charts, track map
-│   ├── gui/                    # Session picker, settings, insights menu
-│   ├── services/stream.py      # Telemetry broadcast socket
-│   └── lib/                    # Tyres, time formatting, settings
-├── tests/                      # pytest suite
-├── .fastf1-cache/              # FastF1 cache (created on first run)
-└── computed_data/              # Computed telemetry and caches (created on first run)
-```
+F1's timing feeds are not always clean, and two problems were worth fixing
+properly rather than living with.
 
-## Building Custom Telemetry Windows
+**Leaderboard order.** The running order used to be wrong through the first few
+corners, disturbed by pit stops, and scrambled at the flag. All three came from
+ranking cars by projecting their coordinates onto the track, and the position
+feed is not good enough for that. Ranking now uses the speed-integrated
+distance channel, with the starting grid seeding lap one and the official
+result taking over at the chequered flag. Measured against official timing for
+the 2026 Hungarian Grand Prix:
 
-When you start a race replay, an **Insights Menu** automatically appears, providing quick access to various telemetry analysis tools. You can easily create custom insight windows that receive live telemetry data using the `PitWallWindow` base class:
+| | Before | After |
+|---|---|---|
+| Exact at a line crossing | 57.6% | **98.4%** (100% within one place) |
+| Worst error | 21 places | **1 place** |
+| Order at lights out | 10.4 places out | **exact** |
+| Final classification | 1.8 places out | **exact** |
 
-```python
-from src.gui.pit_wall_window import PitWallWindow
+See [src/lib/classification.py](./src/lib/classification.py).
 
-class MyInsightWindow(PitWallWindow):
-    def setup_ui(self):
-        # Create your custom UI
-        pass
-    
-    def on_telemetry_data(self, data):
-        # Process telemetry data
-        pass
-```
+**Cars freezing on track.** Occasionally a session's position feed degrades and
+only locates a car every two or three seconds, so cars appear to freeze and
+then jump. Where that happens they are now walked along the circuit at the
+speed the telemetry says they were doing; live mode additionally carries a car
+forward when the feed has lost it entirely. In the worst part of that same race
+this took live mode from 79% frozen frames to 5.7%, and the replay from 55% to
+44%. It cannot be solved completely — the coordinates were never transmitted —
+but it is rare: the 2026 Belgian, 2025 Hungarian and 2024 Italian races all
+show 0.0% frozen frames, and none of this engages on them. See
+[docs/LiveMode.md](./docs/LiveMode.md#when-the-position-feed-falls-behind).
 
-The `PitWallWindow` base class handles all telemetry stream connection logic automatically, allowing you to focus solely on your window's functionality.
+> **Rebuild old replays.** Anything cached before these changes still holds the
+> old ordering and unrepaired positions. Re-run it once with `--refresh-data`.
 
-**Key Features:**
-- Automatic connection to telemetry stream
-- Built-in status bar with connection state
-- Proper cleanup on window close
-- Simple API - just implement `setup_ui()` and `on_telemetry_data()`
+## Documentation
 
-**Documentation & Examples:**
-- See [docs/PitWallWindow.md](./docs/PitWallWindow.md) for complete guide
-- See [docs/InsightsMenu.md](./docs/InsightsMenu.md) for adding insights to the menu
-- Run the example: `python -m src.gui.example_pit_wall_window`
-- Test the menu: `python -m src.gui.insights_menu`
+| Guide | What it covers |
+|-------|----------------|
+| [docs/LiveMode.md](./docs/LiveMode.md) | Live sessions: data sources, latency tuning, troubleshooting |
+| [telemetry.md](./telemetry.md) | The telemetry stream and its frame format |
+| [docs/PitWallWindow.md](./docs/PitWallWindow.md) | Building your own insight window on the telemetry stream |
+| [docs/InsightsMenu.md](./docs/InsightsMenu.md) | Adding an entry to the insights menu |
+| [docs/Testing.md](./docs/Testing.md) | Running the test suite |
+| [roadmap.md](./roadmap.md) | Where the project is heading |
 
-## Customization
+## Known Issues
 
-- Change track width, colors, and UI layout in `src/arcade_replay.py`.
-- Adjust telemetry processing in `src/f1_data.py`.
-- Create custom telemetry windows using `PitWallWindow` base class (see above).
+- **conda environments** may need an extra package if you hit
+  `arcade.application.NoOpenGLException: Unable to create an OpenGL 3.3+ context`:
+
+  ```bash
+  conda install -c conda-forge libstdcxx-ng
+  ```
+
+  Thanks to @el-mandaloriano for the fix (#12).
+- **Cached replays are large** — roughly 450 MB for a race, in `computed_data/`.
 
 ## Contributing
 
@@ -304,48 +291,6 @@ Contributions are welcome — issues, ideas and pull requests alike.
 See [roadmap.md](./roadmap.md) for where the project is heading, and
 [contributors.md](./contributors.md) for the people whose work is already in
 here.
-
-# Known Issues
-
-- If you are using a `conda` environment, you might need to install a few extra packages if you get this error:
-```
-arcade.application.NoOpenGLException: Unable to create an OpenGL 3.3+ context. Check to make sure your system supports OpenGL 3.3 or higher
-```
-You can easily fix this by running this command:
-```bash
-$ conda install -c conda-forge libstdcxx-ng
-```
-Thanks to @el-mandaloriano for showing how to resolve this issue: #12
-- **Leaderboard accuracy — fixed.** The order used to be wrong through the first
-  few corners, disturbed by pit stops, and scrambled at the flag by drivers'
-  final x,y positions. All three came from ranking cars by projecting their
-  coordinates onto the track: F1's position feed goes stale for seconds at a
-  time and occasionally jumps hundreds of metres. Ranking now uses the
-  speed-integrated distance channel instead, with the starting grid seeding
-  lap one and the official result taking over at the chequered flag. Measured
-  against official timing for the 2026 Hungarian Grand Prix, the order is now
-  exact at 98.4% of line crossings (100% within one place, previously 57.6%
-  exact with errors up to 21 places), exact at lights out, and an exact match
-  for the final classification. See [src/lib/classification.py](./src/lib/classification.py).
-
-  > Replays cached before this change still contain the old ordering. Re-run
-  > with `--refresh-data` to rebuild them.
-
-- **Cars freezing on track — improved, not solved.** F1's position feed is
-  normally healthy, updating each car about four times a second. Occasionally
-  a session's feed degrades badly: in the 2026 Hungarian Grand Prix it repeats
-  the same coordinates for two to three seconds at a time and then jumps a
-  couple of hundred metres, so cars appear to freeze and teleport. Where that
-  happens, cars are now walked along the reference line at the speed they were
-  actually doing, which cut frozen frames from 55% to 44% in that race without
-  making the motion any jumpier. It cannot be fully solved on the client: the
-  coordinates were simply never transmitted. Surveying other sessions, this is
-  rare — the 2026 Belgian, 2025 Hungarian and 2024 Italian races all show 0.0%
-  frozen frames, and the repair is a no-op on them.
-
-  Live mode gets the same treatment plus dead reckoning, since a live feed can
-  fall behind entirely: in the worst part of that race it went from 79% frozen
-  frames to 5.7%. See [docs/LiveMode.md](./docs/LiveMode.md#when-the-position-feed-falls-behind).
 
 ## 📝 License
 
