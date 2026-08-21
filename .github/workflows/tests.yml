@@ -10,6 +10,11 @@ jobs:
   pytest:
     name: Python tests
     runs-on: ubuntu-latest
+    env:
+      # Headless CI: force matplotlib's Agg backend (the insight windows
+      # otherwise select Qt) and run Qt offscreen.
+      MPLBACKEND: Agg
+      QT_QPA_PLATFORM: offscreen
 
     strategy:
       matrix:

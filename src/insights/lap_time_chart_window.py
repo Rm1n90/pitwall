@@ -22,7 +22,12 @@ import time
 
 import numpy as np
 import matplotlib
-matplotlib.use("QtAgg")
+import os as _os
+# Use an interactive Qt backend for the live window, but respect an
+# explicit backend (e.g. MPLBACKEND=Agg in headless CI) so the module
+# can be imported without a display.
+if not _os.environ.get("MPLBACKEND"):
+    matplotlib.use("QtAgg")
 import matplotlib.lines as mlines
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker

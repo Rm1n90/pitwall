@@ -2,7 +2,12 @@ import sys
 from collections import deque
 
 import matplotlib
-matplotlib.use("QtAgg")
+import os as _os
+# Use an interactive Qt backend for the live window, but respect an
+# explicit backend (e.g. MPLBACKEND=Agg in headless CI) so the module
+# can be imported without a display.
+if not _os.environ.get("MPLBACKEND"):
+    matplotlib.use("QtAgg")
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import matplotlib.ticker as ticker
