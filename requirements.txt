@@ -10,3 +10,4 @@ pyglet
 pyside6
 questionary
 rich
+pdfplumber==0.11.4

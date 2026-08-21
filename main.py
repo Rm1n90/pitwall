@@ -87,6 +87,82 @@ def run_live():
         return 1
     return 0
 
+
+def run_motogp():
+    """Load and replay a MotoGP session from the public API.
+
+    Reads ``--year``, ``--event`` (short name, e.g. THA), ``--class``
+    (MotoGP/Moto2/Moto3) and ``--session`` (RAC/SPR). Returns an exit code.
+    """
+    from src.motogp import session as motogp_session
+
+    year = _arg_value("--year", 2025, int)
+    event = _arg_value("--event", "THA")
+    category = _arg_value("--class", "MotoGP")
+    code = _arg_value("--session", "RAC")
+
+    print(f"Loading MotoGP {year} {event} {category} {code} ...")
+    try:
+        replay = motogp_session.load_race(year, event, category, code)
+    except LookupError as exc:
+        print(f"\nCould not load that session: {exc}\n")
+        return 1
+
+    print(f"Loaded {replay.title}: {len(replay.drivers)} riders, "
+          f"{len(replay.frames)} frames.")
+    run_arcade_replay(
+        frames=replay.frames,
+        track_statuses=[],
+        example_lap=replay.example_lap,
+        drivers=replay.drivers,
+        title=replay.title,
+        playback_speed=_arg_value("--speed", 1.0, float),
+        driver_colors=replay.driver_colors,
+        circuit_rotation=replay.circuit_rotation,
+        total_laps=replay.total_laps,
+        session_type=replay.session_type,
+        ready_file=_arg_value("--ready-file"),
+        enable_telemetry=False,
+        series="motogp",
+        pit_lane=replay.pit_lane,
+    )
+    return 0
+
+
+def run_motogp_live():
+    """Watch the MotoGP session that is happening right now. Returns an exit code."""
+    from src.motogp import session as motogp_session
+
+    print("Connecting to the MotoGP live timing feed ...")
+    try:
+        engine, circuit, live = motogp_session.build_live_engine(
+            poll_interval_s=_arg_value("--live-interval", 5.0, float))
+    except Exception as exc:
+        print(f"\nNo live MotoGP session available: {exc}\n")
+        return 1
+
+    engine.start()
+    print(f"Live: {live.event_name or ''} — {live.circuit_name}, "
+          f"{len(engine.state.drivers)} riders on track.")
+    run_arcade_replay(
+        frames=engine.frames,
+        track_statuses=[],
+        example_lap=circuit.example_lap,
+        drivers=list(engine.state.drivers.keys()),
+        title=f"MotoGP LIVE — {live.circuit_name}",
+        playback_speed=1.0,
+        driver_colors=engine.driver_colors(),
+        circuit_rotation=circuit.rotation,
+        total_laps=engine.total_laps(),
+        session_type="R",
+        enable_telemetry=False,
+        series="motogp",
+        pit_lane=circuit.pit_lane,
+        live_engine=engine,
+    )
+    return 0
+
+
 def main(year=None, round_number=None, playback_speed=1, session_type='R', visible_hud=True, ready_file=None, show_telemetry_viewer=True):
   print(f"Loading F1 {year} Round {round_number} Session '{session_type}'")
   session = load_session(year, round_number, session_type)
@@ -255,6 +331,14 @@ if __name__ == "__main__":
   if "--live" in sys.argv:
     # Watch the session that is happening right now
     sys.exit(run_live())
+
+  if "--motogp-live" in sys.argv:
+    # Watch the MotoGP session happening right now
+    sys.exit(run_motogp_live())
+
+  if "--motogp" in sys.argv:
+    # Replay a MotoGP session from the public API
+    sys.exit(run_motogp())
 
   if "--year" in sys.argv:
     year_index = sys.argv.index("--year") + 1

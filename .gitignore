@@ -22,3 +22,7 @@ still_frame.png
 .DS_Store
 .idea/
 .vscode/
+
+# MotoGP timing sheets are Dorna copyright — fetched locally, never committed.
+# Run tests/fixtures/motogp/download_pdfs.py to download them for the tests.
+tests/fixtures/motogp/*.pdf

@@ -633,18 +633,33 @@ class DriverInfoComponent(BaseComponent):
         left_text_x = left + 15
 
         # Telemetry Text
+        is_motogp = getattr(window, "series", "f1") == "motogp"
         speed = driver_pos.get('speed', 0)
         arcade.Text(f"Speed: {speed:.0f} km/h", left + 15, cursor_y, arcade.color.WHITE, 12, anchor_y="center").draw()
         cursor_y -= row_gap
-        arcade.Text(f"Gear: {driver_pos.get('gear', '-')}", left + 15, cursor_y, arcade.color.WHITE, 12,
-                    anchor_y="center").draw()
-        cursor_y -= row_gap
 
-        drs_val = driver_pos.get('drs', 0)
-        drs_str, drs_color = ("DRS: ON", arcade.color.GREEN) if drs_val in [10, 12, 14] else \
-            ("DRS: AVAIL", arcade.color.YELLOW) if drs_val == 8 else ("DRS: OFF", arcade.color.GRAY)
-        arcade.Text(drs_str, left + 15, cursor_y, drs_color, 12, anchor_y="center", bold=True).draw()
-        cursor_y -= row_gap
+        if is_motogp:
+            # MotoGP publishes no gear or DRS. Show the tyre compound instead,
+            # which is the meaningful per-rider readout here.
+            from src.lib.tyres import get_tyre_compound_str
+            try:
+                compound = get_tyre_compound_str(int(driver_pos.get('tyre', -1)))
+            except (TypeError, ValueError):
+                compound = "UNKNOWN"
+            label = compound.title() if compound != "UNKNOWN" else "—"
+            arcade.Text(f"Tyre: {label}", left + 15, cursor_y, arcade.color.WHITE,
+                        12, anchor_y="center").draw()
+            cursor_y -= row_gap
+        else:
+            arcade.Text(f"Gear: {driver_pos.get('gear', '-')}", left + 15, cursor_y, arcade.color.WHITE, 12,
+                        anchor_y="center").draw()
+            cursor_y -= row_gap
+
+            drs_val = driver_pos.get('drs', 0)
+            drs_str, drs_color = ("DRS: ON", arcade.color.GREEN) if drs_val in [10, 12, 14] else \
+                ("DRS: AVAIL", arcade.color.YELLOW) if drs_val == 8 else ("DRS: OFF", arcade.color.GRAY)
+            arcade.Text(drs_str, left + 15, cursor_y, drs_color, 12, anchor_y="center", bold=True).draw()
+            cursor_y -= row_gap
 
         # Gaps (Calculated from Leaderboard)
         gap_ahead, gap_behind = "Ahead: N/A", "Behind: N/A"
@@ -743,7 +758,9 @@ class DriverInfoComponent(BaseComponent):
             except (KeyError, AttributeError, TypeError) as e:
                 print(f"Error displaying driver info: {e}")
 
-        # Graphs
+        # Graphs — throttle and brake only exist for F1, so skip for MotoGP.
+        if is_motogp:
+            return
         thr, brk = driver_pos.get('throttle', 0), driver_pos.get('brake', 0)
         t_r, b_r = max(0.0, min(1.0, thr / 100.0)), max(0.0, min(1.0, brk / 100.0 if brk > 1.0 else brk))
         bar_w, bar_h, b_y = 20, 80, bottom + 35

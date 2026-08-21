@@ -54,9 +54,12 @@ class F1RaceReplayWindow(arcade.Window):
                  session_info=None, session=None, enable_telemetry=False,
                  race_control_messages=None, live_engine=None,
                  circuit_info=None, pit_lane=None, pit_stop_times=None,
-                 team_radio=None, portraits=None):
+                 team_radio=None, portraits=None, series="f1"):
         # Set resizable to True so the user can adjust mid-sim
         super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, title, resizable=True)
+        # Which championship this session belongs to. MotoGP has no DRS, gear,
+        # throttle or brake telemetry, so the driver panel hides those rows.
+        self.series = series
         self.maximize()
 
         self.telemetry_stream = None
@@ -232,11 +235,25 @@ class F1RaceReplayWindow(arcade.Window):
         )
 
         # Build track geometry (Raw World Coordinates)
+        # The ribbon width is in world units. F1 telemetry is in ~1/10 m, so
+        # 200 reads as ~20 m; MotoGP geometry is in metres, so the same 200
+        # would be a 200 m blob whose offset edges self-intersect into a mess.
+        # Scale the width to the circuit's own coordinate size instead, which
+        # reproduces ~200 for F1 and ~18 m for a MotoGP circuit.
+        track_width_world = 200.0
+        if getattr(self, "series", "f1") != "f1":
+            _wx = np.asarray(example_lap["X"], dtype=float)
+            _wy = np.asarray(example_lap["Y"], dtype=float)
+            _arc = float(np.hypot(np.diff(_wx), np.diff(_wy)).sum())
+            track_width_world = max(12.0, _arc * 0.004)
+        self._track_width_world = track_width_world
+
         (self.plot_x_ref, self.plot_y_ref,
          self.x_inner, self.y_inner,
          self.x_outer, self.y_outer,
          self.x_min, self.x_max,
-         self.y_min, self.y_max, self.drs_zones) = build_track_from_example_lap(example_lap)
+         self.y_min, self.y_max, self.drs_zones) = build_track_from_example_lap(
+            example_lap, track_width=track_width_world)
 
         # Build a dense reference polyline (used for projecting car (x,y) -> along-track distance)
         ref_points = self._interpolate_points(self.plot_x_ref, self.plot_y_ref, interp_points=4000)
@@ -281,7 +298,7 @@ class F1RaceReplayWindow(arcade.Window):
             self.track_renderer = TrackRenderer(
                 np.asarray(self.plot_x_ref, dtype=float),
                 np.asarray(self.plot_y_ref, dtype=float),
-                track_width=200.0,
+                track_width=track_width_world,
                 corners=corner_labels_from_circuit_info(circuit_info)
                 if circuit_info is not None else [],
                 pit_lane=pit_lane or [],

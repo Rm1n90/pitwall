@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from src.f1_data import get_race_weekends_by_year, get_race_weekends_by_place, get_all_unique_race_names, load_session
 from src.gui.settings_dialog import SettingsDialog
 from src.lib.season import get_season
+from src.motogp import gui_helpers as motogp_gui
 
 # Worker thread that checks whether a session is running right now
 class CheckLiveWorker(QThread):
@@ -49,6 +50,33 @@ class CheckLiveWorker(QThread):
                               "label": f"Live status unavailable ({exc})"})
 
 
+class MotoGPLiveCheckWorker(QThread):
+    """Checks the MotoGP timing feed for a session running right now."""
+    result = Signal(object)
+
+    def run(self):
+        try:
+            from src.motogp.client import MotoGPClient
+            live = MotoGPClient().live_timing()
+            # The feed holds the last session's final state ('F') between
+            # sessions; anything else means one is under way.
+            is_live = bool(live.session_status_id) and live.session_status_id != "F"
+            name = live.event_name or live.circuit_name or "MotoGP"
+            if is_live:
+                self.result.emit({
+                    "live": True, "title": name,
+                    "label": f"🔴  WATCH MOTOGP LIVE - {name} ({live.session_name or ''})",
+                })
+            else:
+                self.result.emit({
+                    "live": False, "title": name,
+                    "label": "No live MotoGP session right now",
+                })
+        except Exception as exc:
+            self.result.emit({"live": False, "title": "",
+                              "label": f"MotoGP live status unavailable ({exc})"})
+
+
 # Worker thread to fetch schedule without blocking UI
 class FetchScheduleWorker(QThread):
     result = Signal(object)
@@ -71,10 +99,35 @@ class FetchScheduleWorker(QThread):
         except Exception as e:
             self.error.emit(str(e))
 
+class MotoGPScheduleWorker(QThread):
+    """Fetches a MotoGP season's events off the UI thread."""
+    result = Signal(object)
+    error = Signal(str)
+
+    def __init__(self, year, parent=None):
+        super().__init__(parent)
+        self.year = year
+
+    def run(self):
+        try:
+            from src.motogp.client import MotoGPClient
+            client = MotoGPClient()
+            season = next((s for s in client.seasons() if s.year == self.year),
+                          None)
+            if season is None:
+                self.result.emit([])
+                return
+            events = client.events(season.id, finished=True)
+            self.result.emit(motogp_gui.motogp_event_rows(events))
+        except Exception as exc:  # noqa: BLE001 - surfaced to the UI
+            self.error.emit(str(exc))
+
+
 class RaceSelectionWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.worker = None
+        self.series = "f1"
         self.loading_session = False
         self.selected_session_title = None
         self.current_year = get_season()
@@ -116,9 +169,19 @@ class RaceSelectionWindow(QMainWindow):
         self.live_btn.setCursor(Qt.PointingHandCursor)
         self.live_btn.setFixedHeight(44)
         self.live_btn.setEnabled(False)
-        self.live_btn.clicked.connect(self.launch_live)
+        self.live_btn.clicked.connect(self._on_live_clicked)
         main_layout.addWidget(self.live_btn)
         self._start_live_check()
+
+        # Series selection (Formula 1 or MotoGP)
+        series_layout = QHBoxLayout()
+        series_label = QLabel("Select Series:")
+        self.series_combo = QComboBox()
+        self.series_combo.addItems(["Formula 1", "MotoGP"])
+        self.series_combo.currentTextChanged.connect(self._on_series_changed)
+        series_layout.addWidget(series_label)
+        series_layout.addWidget(self.series_combo)
+        main_layout.addLayout(series_layout)
 
         # Year selection
         year_layout = QHBoxLayout()
@@ -245,13 +308,84 @@ class RaceSelectionWindow(QMainWindow):
         #Year filter
         if year is not None:
             self.loading_session = True
-            self.worker = FetchScheduleWorker(int(year))
+            if self.series == "motogp":
+                self.worker = MotoGPScheduleWorker(int(year))
+            else:
+                self.worker = FetchScheduleWorker(int(year))
             self.worker.result.connect(self.populate_schedule)
             self.worker.error.connect(self.show_error)
             self.worker.start()
             return
         
         self.loading_session=False
+
+    def _on_series_changed(self, text):
+        """Switch between the F1 and MotoGP schedules."""
+        self.series = "motogp" if text == "MotoGP" else "f1"
+        # The race-name filter is built from F1 event names, so it only applies
+        # to Formula 1.
+        self.place_combo.setEnabled(self.series == "f1")
+        try:
+            self.session_panel.hide()
+        except Exception:
+            pass
+        year = self.selected_year or self.current_year
+        self.selected_year = year
+        self.year_combo.blockSignals(True)
+        self.year_combo.setCurrentText(str(year))
+        self.year_combo.blockSignals(False)
+        # A switch must always reload, even if an earlier fetch is still in
+        # flight, so the new series' schedule is not dropped by the guard.
+        self.loading_session = False
+        self.load_schedule(year=year)
+        # Point the live banner at the right series.
+        if self.series == "motogp":
+            self._start_motogp_live_check()
+        else:
+            self._start_live_check()
+
+    def _on_live_clicked(self):
+        """Route the live banner to the selected series' live launcher."""
+        if self.series == "motogp":
+            self._launch_motogp_live()
+        else:
+            self.launch_live()
+
+    def _start_motogp_live_check(self):
+        """Check for a running MotoGP session and update the live banner."""
+        self.live_btn.setEnabled(False)
+        self._motogp_live_worker = MotoGPLiveCheckWorker(self)
+        self._motogp_live_worker.result.connect(self._on_live_status)
+        self._motogp_live_worker.start()
+
+    def _launch_motogp_live(self):
+        """Launch the live MotoGP viewer, detached from the UI."""
+        main_path = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "main.py"))
+        cmd = [sys.executable, main_path, "--motogp-live"]
+        if "--verbose" in sys.argv:
+            cmd.append("--verbose")
+        try:
+            self._live_proc = subprocess.Popen(cmd)
+        except Exception as exc:  # noqa: BLE001 - surfaced to the UI
+            self.show_error(f"Could not launch MotoGP live: {exc}")
+
+    def _launch_motogp(self, ev, label, category, code):
+        """Launch main.py for a MotoGP class/session, detached from the UI."""
+        year = ev.get("year") or self.selected_year or self.current_year
+        event_short = ev.get("short_name")
+        if not event_short:
+            self.show_error("This event has no MotoGP identifier to launch.")
+            return
+        main_path = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "main.py"))
+        cmd = motogp_gui.build_motogp_command(
+            sys.executable, main_path, year, event_short, category, code,
+            verbose="--verbose" in sys.argv)
+        try:
+            subprocess.Popen(cmd)
+        except Exception as exc:  # noqa: BLE001 - surfaced to the UI
+            self.show_error(f"Could not launch MotoGP session: {exc}")
 
     def load_by_year(self, year_text):
         if self.loading_session:
@@ -319,6 +453,22 @@ class RaceSelectionWindow(QMainWindow):
             self.session_panel.show()
         except Exception:
             pass
+
+        # MotoGP events offer a fixed set of class/session buttons rather than
+        # the F1 practice/qualifying/race breakdown.
+        if isinstance(ev, dict) and ev.get("series") == "motogp":
+            for i in reversed(range(self.session_list_layout.count())):
+                w = self.session_list_layout.itemAt(i).widget()
+                if w:
+                    w.setParent(None)
+            for label, category, code in motogp_gui.MOTOGP_SESSION_BUTTONS:
+                btn = QPushButton(label)
+                btn.clicked.connect(
+                    lambda _, e=ev, l=label, c=category, s=code:
+                    self._launch_motogp(e, l, c, s))
+                self.session_list_layout.addWidget(btn)
+            return
+
         # determine sessions to show
         ev_type = (ev.get("type") or "").lower()
         # A sprint weekend runs a single practice session; a normal one runs
